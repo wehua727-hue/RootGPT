@@ -291,10 +291,10 @@ class AdminHandler:
             
             ai_status = "🟢 Yoqilgan" if channel.ai_enabled else "🔴 O'chirilgan"
             mode_text = {
-                'comment': '💬 Faqat komentlarga javob',
-                'reaction': '❤️ Faqat reaksiya qo'shish',
-                'both': '💬❤️ Ikkalasi ham'
-            }.get(channel.mode, '💬 Komentlarga javob')
+                'comment': 'Faqat komentlarga javob',
+                'reaction': 'Faqat reaksiya qoshish',
+                'both': 'Ikkalasi ham'
+            }.get(channel.mode, 'Komentlarga javob')
             
             text = (
                 f"📢 <b>{channel.channel_title}</b>\n\n"
