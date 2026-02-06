@@ -232,22 +232,43 @@ class AdminHandler:
             await message.reply("❌ Sizda admin huquqlari yo'q.")
             return
         
-        # Parse command: /fixchannel <new_channel_id>
+        # Parse command: /fixchannel <new_channel_id> or /fixchannel @username
         parts = message.text.split()
         if len(parts) != 2:
             await message.reply(
                 "❌ Noto'g'ri format!\n\n"
-                "To'g'ri format:\n"
-                "<code>/fixchannel -1001234567890</code>\n\n"
+                "To'g'ri formatlar:\n"
+                "1. <code>/fixchannel -1001234567890</code>\n"
+                "2. <code>/fixchannel @channel_username</code>\n\n"
                 "Bu buyruq birinchi kanalni yangi ID bilan yangilaydi."
             )
             return
         
-        try:
-            new_channel_id = int(parts[1])
-        except ValueError:
-            await message.reply("❌ Kanal ID raqam bo'lishi kerak!")
-            return
+        channel_input = parts[1]
+        
+        # Check if it's a username or ID
+        if channel_input.startswith('@'):
+            # Username format
+            try:
+                chat = await self.bot.get_chat(channel_input)
+                new_channel_id = chat.id
+                channel_title = chat.title
+            except Exception as e:
+                await message.reply(f"❌ Kanal topilmadi: {channel_input}\n\nXatolik: {e}")
+                return
+        else:
+            # Numeric ID format
+            try:
+                new_channel_id = int(channel_input)
+                # Try to get channel info
+                try:
+                    chat = await self.bot.get_chat(new_channel_id)
+                    channel_title = chat.title
+                except Exception:
+                    channel_title = "Unknown"
+            except ValueError:
+                await message.reply("❌ Kanal ID raqam bo'lishi kerak yoki @ bilan boshlanishi kerak!")
+                return
         
         session = await self.database.get_session()
         try:
@@ -263,15 +284,16 @@ class AdminHandler:
             channel = channels[0]
             old_id = channel.channel_id
             channel.channel_id = new_channel_id
+            channel.channel_title = channel_title
             await session.commit()
             
             await message.reply(
                 f"✅ Kanal ID yangilandi!\n\n"
-                f"Kanal: {channel.channel_title}\n"
+                f"Kanal: {channel_title}\n"
                 f"Eski ID: <code>{old_id}</code>\n"
                 f"Yangi ID: <code>{new_channel_id}</code>\n\n"
                 f"Endi /boost buyrug'ini ishlating:\n"
-                f"<code>/boost {new_channel_id} &lt;post_id&gt;</code>"
+                f"<code>/boost https://t.me/{channel_input.replace('@', '')}/&lt;post_id&gt;</code>"
             )
             
         except Exception as e:
