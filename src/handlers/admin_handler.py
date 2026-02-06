@@ -520,7 +520,8 @@ class AdminHandler:
         # Show emoji selection keyboard
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         
-        emojis = ['👍', '❤️', '🔥', '😍', '🎉', '💯', '⚡️', '🚀', '👏', '💪', '🌟', '✨']
+        # Only use valid Telegram reaction emojis
+        emojis = ['👍', '❤️', '🔥', '😍', '🎉', '💯', '🤩', '🥰', '👏', '💪', '🏆', '🎯']
         
         keyboard_buttons = []
         row = []
@@ -810,6 +811,7 @@ class AdminHandler:
             
             reaction_service = ReactionBoostService(self.bot, session)
             total_reactions = 0
+            failed_emojis = []
             
             for emoji in emojis:
                 for i in range(count_per_emoji):
@@ -825,15 +827,25 @@ class AdminHandler:
                         if total_reactions < len(emojis) * count_per_emoji:
                             await asyncio.sleep(random.uniform(1, 3))
                     except Exception as e:
-                        await message.reply(f"❌ {emoji} qo'shishda xatolik: {e}")
-                        break
+                        error_msg = str(e)
+                        if "REACTION_INVALID" in error_msg:
+                            if emoji not in failed_emojis:
+                                failed_emojis.append(emoji)
+                            break  # Skip remaining attempts for this emoji
+                        else:
+                            await message.reply(f"❌ {emoji} qo'shishda xatolik: {e}")
+                            break
             
-            await message.reply(
-                f"✅ Reaksiyalar qo'shildi!\n\n"
-                f"Kanal: {channel.channel_title}\n"
-                f"Post ID: {post_id}\n"
-                f"Jami: {total_reactions} ta reaksiya"
-            )
+            result_text = f"✅ Reaksiyalar qo'shildi!\n\n"
+            result_text += f"Kanal: {channel.channel_title}\n"
+            result_text += f"Post ID: {post_id}\n"
+            result_text += f"Jami: {total_reactions} ta reaksiya"
+            
+            if failed_emojis:
+                result_text += f"\n\n⚠️ Noto'g'ri emojilar: {' '.join(failed_emojis)}\n"
+                result_text += "(Bu emojilar Telegram reaksiyalari uchun qo'llab-quvvatlanmaydi)"
+            
+            await message.reply(result_text)
             
         except Exception as e:
             await message.reply(f"❌ Xatolik: {str(e)}")
@@ -1265,8 +1277,8 @@ class AdminHandler:
             "Quyidagi emojilardan tanlang (tugmani bosing):\n"
         )
         
-        # Popular emojis
-        emojis = ['👍', '❤️', '🔥', '😍', '🎉', '💯', '⚡️', '🚀', '👏', '💪', '🌟', '✨']
+        # Popular emojis - only valid Telegram reaction emojis
+        emojis = ['👍', '❤️', '🔥', '😍', '🎉', '💯', '🤩', '🥰', '👏', '💪', '🏆', '🎯']
         
         keyboard_buttons = []
         row = []
