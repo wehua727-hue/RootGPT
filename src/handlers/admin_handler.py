@@ -159,7 +159,8 @@ class AdminHandler:
                 status = "🟢" if channel.ai_enabled else "🔴"
                 text += f"{status} {channel.channel_title}\n"
                 text += f"   ID: <code>{channel.channel_id}</code>\n"
-                text += f"   AI: {'Yoqilgan' if channel.ai_enabled else 'Ochirilgan'}\n\n"
+                ai_text = 'Yoqilgan' if channel.ai_enabled else 'Ochirilgan'
+                text += f"   AI: {ai_text}\n\n"
                 
                 keyboard_buttons.append([
                     InlineKeyboardButton(
@@ -316,11 +317,12 @@ class AdminHandler:
                 text += f"   • Emojilar: {' '.join(emojis[:5])}\n"
                 text += f"   • Soni: {settings.get('reaction_count', 0)} ta\n"
                 text += f"   • Kutish: {settings.get('delay_min', 0)}-{settings.get('delay_max', 0)}s\n"
-                text += f"   • Auto: {'✅' if settings.get('auto_boost') else '❌'}\n"
+                auto_icon = 'ON' if settings.get('auto_boost') else 'OFF'
+                text += f"   • Auto: {auto_icon}\n"
             
             keyboard_buttons = [
                 [InlineKeyboardButton(
-                    text=f"🤖 AI {'Ochirish' if channel.ai_enabled else 'Yoqish'}",
+                    text="AI Ochirish" if channel.ai_enabled else "AI Yoqish",
                     callback_data=f"toggle_ai_{channel.id}"
                 )]
             ]
@@ -395,20 +397,22 @@ class AdminHandler:
             delay_max = settings.get('delay_max', 8.0)
             auto_boost = settings.get('auto_boost', True)
             
+            auto_status = "Yoqilgan" if auto_boost else "O'chirilgan"
+            
             text = (
                 f"❤️ <b>Reaksiya sozlamalari</b>\n"
                 f"📢 <b>Kanal:</b> {channel.channel_title}\n\n"
                 f"😊 <b>Emojilar:</b> {' '.join(emojis) if emojis else 'Tanlanmagan'}\n"
                 f"🔢 <b>Har postga:</b> {count} ta reaksiya\n"
                 f"⏱ <b>Kutish vaqti:</b> {delay_min}-{delay_max} soniya\n"
-                f"🤖 <b>Auto-boost:</b> {'✅ Yoqilgan' if auto_boost else '❌ O'chirilgan'}\n"
+                f"🤖 <b>Auto-boost:</b> {auto_status}\n"
             )
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="😊 Emojilarni o'zgartirish", callback_data=f"set_emojis_{channel_id}")],
                 [InlineKeyboardButton(text="🔢 Sonini o'zgartirish", callback_data=f"set_count_{channel_id}")],
                 [InlineKeyboardButton(
-                    text=f"🤖 Auto-boost {'O'chirish' if auto_boost else 'Yoqish'}",
+                    text="Auto-boost O'chirish" if auto_boost else "Auto-boost Yoqish",
                     callback_data=f"toggle_auto_{channel_id}"
                 )],
                 [InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"channel_{channel_id}")]
