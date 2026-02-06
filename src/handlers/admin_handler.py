@@ -492,6 +492,282 @@ class AdminHandler:
         finally:
             await session.close()
     
+    async def handle_customboost_command(self, message: Message) -> None:
+        """Handle /customboost command - custom emoji and count selection"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await message.reply("❌ Sizda admin huquqlari yo'q.")
+            return
+        
+        # Parse command: /customboost <post_link>
+        parts = message.text.split()
+        
+        if len(parts) != 2:
+            await message.reply(
+                "❌ Noto'g'ri format!\n\n"
+                "To'g'ri format:\n"
+                "<code>/customboost https://t.me/channel/123</code>\n\n"
+                "Bu buyruq sizga emoji va sonni tanlash imkonini beradi."
+            )
+            return
+        
+        post_link = parts[1]
+        
+        # Parse link to validate
+        if 't.me/' not in post_link:
+            await message.reply("❌ Noto'g'ri link format!")
+            return
+        
+        # Show emoji selection
+        try:
+            link_parts = post_link.split('/')
+            if '/c/' in post_link:
+                channel_part = link_parts[-2]
+                post_id = link_parts[-1]
+                callback_prefix = f"cb_c_{channel_part}_{post_id}"
+            else:
+                username = link_parts[-2].replace('@', '')
+                post_id = link_parts[-1]
+                callback_prefix = f"cb_u_{username}_{post_id}"
+        except Exception as e:
+            await message.reply(f"❌ Link parse qilishda xatolik: {e}")
+            return
+        
+        # Show emoji selection keyboard
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        
+        emojis = ['👍', '❤️', '🔥', '😍', '🎉', '💯', '⚡️', '🚀', '👏', '💪', '🌟', '✨']
+        
+        keyboard_buttons = []
+        row = []
+        for emoji in emojis:
+            row.append(InlineKeyboardButton(text=emoji, callback_data=f"{callback_prefix}_e_{emoji}"))
+            if len(row) == 4:
+                keyboard_buttons.append(row)
+                row = []
+        if row:
+            keyboard_buttons.append(row)
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"{callback_prefix}_done")
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        await message.reply(
+            f"😊 <b>Emojilarni tanlang</b>\n\n"
+            f"Post: {post_link}\n\n"
+            f"Qaysi emojilarni qo'shmoqchisiz? (bir nechta tanlash mumkin)",
+            reply_markup=keyboard
+        )
+        
+        # Store selection in memory (temporary)
+        if not hasattr(self, '_custom_boost_selections'):
+            self._custom_boost_selections = {}
+        
+        self._custom_boost_selections[user_id] = {
+            'post_link': post_link,
+            'callback_prefix': callback_prefix,
+            'emojis': []
+        }
+    
+    async def _handle_custom_boost_callback(self, callback: CallbackQuery) -> None:
+        """Handle custom boost emoji/count selection callbacks"""
+        user_id = callback.from_user.id
+        data = callback.data
+        
+        if not hasattr(self, '_custom_boost_selections'):
+            self._custom_boost_selections = {}
+        
+        if user_id not in self._custom_boost_selections:
+            await callback.answer("❌ Sessiya tugagan. Qaytadan /customboost buyrug'ini ishlating.")
+            return
+        
+        selection = self._custom_boost_selections[user_id]
+        
+        # Parse callback data: cb_c_1234_567_e_👍 or cb_c_1234_567_done or cb_c_1234_567_count_3
+        parts = data.split("_")
+        
+        if len(parts) >= 5 and parts[4] == 'e':
+            # Emoji selection: cb_c_1234_567_e_👍
+            emoji = parts[5]
+            
+            if emoji in selection['emojis']:
+                selection['emojis'].remove(emoji)
+                await callback.answer(f"❌ {emoji} olib tashlandi")
+            else:
+                selection['emojis'].append(emoji)
+                await callback.answer(f"✅ {emoji} qo'shildi")
+            
+            # Update message to show selected emojis
+            selected_text = ' '.join(selection['emojis']) if selection['emojis'] else 'Hech narsa tanlanmagan'
+            
+            await callback.message.edit_text(
+                f"😊 <b>Emojilarni tanlang</b>\n\n"
+                f"Post: {selection['post_link']}\n\n"
+                f"<b>Tanlangan:</b> {selected_text}\n\n"
+                f"Qaysi emojilarni qo'shmoqchisiz? (bir nechta tanlash mumkin)",
+                reply_markup=callback.message.reply_markup
+            )
+        
+        elif len(parts) >= 4 and parts[3] == 'done':
+            # Done selecting emojis, now ask for count
+            if not selection['emojis']:
+                await callback.answer("❌ Kamida bitta emoji tanlang!")
+                return
+            
+            # Show count selection
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            callback_prefix = selection['callback_prefix']
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="1 ta", callback_data=f"{callback_prefix}_count_1"),
+                    InlineKeyboardButton(text="2 ta", callback_data=f"{callback_prefix}_count_2"),
+                    InlineKeyboardButton(text="3 ta", callback_data=f"{callback_prefix}_count_3"),
+                ],
+                [
+                    InlineKeyboardButton(text="4 ta", callback_data=f"{callback_prefix}_count_4"),
+                    InlineKeyboardButton(text="5 ta", callback_data=f"{callback_prefix}_count_5"),
+                    InlineKeyboardButton(text="10 ta", callback_data=f"{callback_prefix}_count_10"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"{callback_prefix}_back")
+                ]
+            ])
+            
+            selected_text = ' '.join(selection['emojis'])
+            
+            await callback.message.edit_text(
+                f"🔢 <b>Nechta reaksiya qo'shilsin?</b>\n\n"
+                f"Post: {selection['post_link']}\n"
+                f"Emojilar: {selected_text}\n\n"
+                f"Har bir emojidan nechta qo'shilsin?",
+                reply_markup=keyboard
+            )
+            
+            await callback.answer()
+        
+        elif len(parts) >= 5 and parts[4] == 'count':
+            # Count selected: cb_c_1234_567_count_3
+            count = int(parts[5])
+            
+            # Now boost the post
+            await self._custom_boost_post(callback.message, selection, count)
+            
+            # Clear selection
+            del self._custom_boost_selections[user_id]
+            
+            await callback.answer()
+        
+        elif len(parts) >= 4 and parts[3] == 'back':
+            # Go back to emoji selection
+            await self.handle_customboost_command(callback.message)
+            await callback.answer()
+    
+    async def _custom_boost_post(self, message: Message, selection: dict, count_per_emoji: int) -> None:
+        """Boost a post with custom emoji selection"""
+        post_link = selection['post_link']
+        emojis = selection['emojis']
+        
+        # Parse link
+        try:
+            link_parts = post_link.split('/')
+            
+            if '/c/' in post_link:
+                channel_id_str = link_parts[-2]
+                post_id = int(link_parts[-1])
+                channel_id = int(f"-100{channel_id_str}")
+            else:
+                username = link_parts[-2]
+                post_id = int(link_parts[-1])
+                
+                try:
+                    chat = await self.bot.get_chat(f"@{username}")
+                    channel_id = chat.id
+                except Exception as e:
+                    await message.reply(f"❌ Kanal topilmadi: @{username}\n\nXatolik: {e}")
+                    return
+        except Exception as e:
+            await message.reply(f"❌ Link noto'g'ri formatda!\n\nXatolik: {e}")
+            return
+        
+        # Get channel from database
+        session = await self.database.get_session()
+        try:
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Channel).where(
+                    Channel.channel_id == channel_id,
+                    Channel.is_active == True
+                )
+            )
+            channel = result.scalar_one_or_none()
+            
+            if not channel:
+                await message.reply(
+                    f"❌ Kanal topilmadi!\n\n"
+                    f"Kanal ID: <code>{channel_id}</code>\n\n"
+                    f"Avval /fixchannel buyrug'i bilan kanalni qo'shing."
+                )
+                return
+            
+            # Create fake message
+            class FakeMessage:
+                def __init__(self, chat_id, message_id):
+                    self.chat = type('obj', (object,), {'id': chat_id})()
+                    self.message_id = message_id
+            
+            fake_msg = FakeMessage(channel_id, post_id)
+            
+            await message.reply(
+                f"⏳ Reaksiyalar qo'shilmoqda...\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}\n"
+                f"Emojilar: {' '.join(emojis)}\n"
+                f"Har biridan: {count_per_emoji} ta"
+            )
+            
+            # Add reactions manually
+            from ..services.reaction_boost_service import ReactionBoostService
+            import random
+            
+            reaction_service = ReactionBoostService(self.bot, session)
+            total_reactions = 0
+            
+            for emoji in emojis:
+                for i in range(count_per_emoji):
+                    try:
+                        await reaction_service._add_reaction_with_retry(
+                            str(channel_id),
+                            post_id,
+                            emoji
+                        )
+                        total_reactions += 1
+                        
+                        # Small delay
+                        if total_reactions < len(emojis) * count_per_emoji:
+                            await asyncio.sleep(random.uniform(1, 3))
+                    except Exception as e:
+                        await message.reply(f"❌ {emoji} qo'shishda xatolik: {e}")
+                        break
+            
+            await message.reply(
+                f"✅ Reaksiyalar qo'shildi!\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}\n"
+                f"Jami: {total_reactions} ta reaksiya"
+            )
+            
+        except Exception as e:
+            await message.reply(f"❌ Xatolik: {str(e)}")
+            import logging
+            logging.error(f"Error in custom boost: {e}", exc_info=True)
+        finally:
+            await session.close()
+    
     async def handle_callback_query(self, callback: CallbackQuery) -> None:
         """Handle callback queries from inline keyboards"""
         user_id = callback.from_user.id
@@ -564,6 +840,9 @@ class AdminHandler:
                     return
                 
                 await self._boost_post_multiple_times(callback.message, post_link, count)
+        elif data.startswith("cb_"):
+            # Custom boost callbacks
+            await self._handle_custom_boost_callback(callback)
         
         await callback.answer()
     

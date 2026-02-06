@@ -91,6 +91,11 @@ class BotHandler:
             lambda message: message.text and message.text.startswith('/boostmulti')
         )
         
+        self.dp.message.register(
+            self.admin_handler.handle_customboost_command,
+            lambda message: message.text and message.text.startswith('/customboost')
+        )
+        
         # Callback queries for admin interface
         self.dp.callback_query.register(
             self.admin_handler.handle_callback_query
@@ -240,7 +245,8 @@ class BotHandler:
             BotCommand(command="stats", description="Statistika ko'rish"),
             BotCommand(command="settings", description="Sozlamalar"),
             BotCommand(command="boost", description="Postga reaksiya qo'shish"),
-            BotCommand(command="boostmulti", description="Postga ko'p marta reaksiya qo'shish"),
+            BotCommand(command="boostmulti", description="Postga ko'p marta reaksiya"),
+            BotCommand(command="customboost", description="Emoji va sonni tanlash"),
             BotCommand(command="fixchannel", description="Kanal ID ni tuzatish"),
         ]
         
