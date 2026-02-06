@@ -541,8 +541,8 @@ class AdminHandler:
         
         keyboard_buttons = []
         row = []
-        for emoji in emojis:
-            row.append(InlineKeyboardButton(text=emoji, callback_data=f"{callback_prefix}_e_{emoji}"))
+        for idx, emoji in enumerate(emojis):
+            row.append(InlineKeyboardButton(text=emoji, callback_data=f"{callback_prefix}_e_{idx}"))
             if len(row) == 4:
                 keyboard_buttons.append(row)
                 row = []
@@ -569,7 +569,8 @@ class AdminHandler:
         self._custom_boost_selections[user_id] = {
             'post_link': post_link,
             'callback_prefix': callback_prefix,
-            'emojis': []
+            'emojis': [],
+            'emoji_list': emojis  # Store emoji list for reference
         }
     
     async def _handle_custom_boost_callback(self, callback: CallbackQuery) -> None:
@@ -590,8 +591,9 @@ class AdminHandler:
         parts = data.split("_")
         
         if len(parts) >= 5 and parts[4] == 'e':
-            # Emoji selection: cb_c_1234_567_e_👍
-            emoji = parts[5]
+            # Emoji selection: cb_c_1234_567_e_0 (index)
+            emoji_idx = int(parts[5])
+            emoji = selection['emoji_list'][emoji_idx]
             
             if emoji in selection['emojis']:
                 selection['emojis'].remove(emoji)
@@ -603,12 +605,36 @@ class AdminHandler:
             # Update message to show selected emojis
             selected_text = ' '.join(selection['emojis']) if selection['emojis'] else 'Hech narsa tanlanmagan'
             
+            # Rebuild keyboard with updated selection
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            callback_prefix = selection['callback_prefix']
+            emoji_list = selection['emoji_list']
+            
+            keyboard_buttons = []
+            row = []
+            for idx, e in enumerate(emoji_list):
+                # Add checkmark if selected
+                text = f"✅ {e}" if e in selection['emojis'] else e
+                row.append(InlineKeyboardButton(text=text, callback_data=f"{callback_prefix}_e_{idx}"))
+                if len(row) == 4:
+                    keyboard_buttons.append(row)
+                    row = []
+            if row:
+                keyboard_buttons.append(row)
+            
+            keyboard_buttons.append([
+                InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"{callback_prefix}_done")
+            ])
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+            
             await callback.message.edit_text(
                 f"😊 <b>Emojilarni tanlang</b>\n\n"
                 f"Post: {selection['post_link']}\n\n"
                 f"<b>Tanlangan:</b> {selected_text}\n\n"
                 f"Qaysi emojilarni qo'shmoqchisiz? (bir nechta tanlash mumkin)",
-                reply_markup=callback.message.reply_markup
+                reply_markup=keyboard
             )
         
         elif len(parts) >= 4 and parts[3] == 'done':
