@@ -15,6 +15,8 @@ from .config import Config
 from .database import Database
 from .handlers.admin_handler import AdminHandler
 from .handlers.message_handler import MessageHandler
+from .services.reaction_boost_service import ReactionBoostService
+from .services.post_monitor_service import PostMonitorService
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,10 @@ class BotHandler:
         # Initialize handlers
         self.admin_handler = AdminHandler(self.bot, self.database, self.config)
         self.message_handler = MessageHandler(self.bot, self.database, self.config)
+        
+        # Initialize reaction boost services
+        self.reaction_boost_service: Optional[ReactionBoostService] = None
+        self.post_monitor_service: Optional[PostMonitorService] = None
         
         # Register handlers
         self._register_handlers()
@@ -75,6 +81,11 @@ class BotHandler:
             self.admin_handler.handle_callback_query
         )
         
+        # Channel post handler (for reaction boosting)
+        self.dp.channel_post.register(
+            self._handle_channel_post
+        )
+        
         # Regular messages (comments from discussion groups)
         self.dp.message.register(
             self.message_handler.handle_message
@@ -99,12 +110,67 @@ class BotHandler:
                 except Exception as e:
                     logger.error(f"Failed to send error message to admin: {e}")
     
+    async def _initialize_services(self) -> None:
+        """Initialize reaction boost services"""
+        try:
+            # Get database session
+            session = await self.database.get_session()
+            
+            # Initialize ReactionBoostService
+            self.reaction_boost_service = ReactionBoostService(self.bot, session)
+            logger.info("ReactionBoostService initialized")
+            
+            # Initialize PostMonitorService
+            self.post_monitor_service = PostMonitorService(
+                self.bot, 
+                session, 
+                self.reaction_boost_service
+            )
+            logger.info("PostMonitorService initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize services: {e}")
+            # Don't raise - bot can still work without reaction boosting
+    
+    async def _handle_channel_post(self, message: Message) -> None:
+        """Handle new posts in channels (for reaction boosting)"""
+        try:
+            if not self.post_monitor_service:
+                return
+            
+            # Get channel from database
+            from sqlalchemy import select
+            from .models import Channel
+            
+            session = await self.database.get_session()
+            try:
+                result = await session.execute(
+                    select(Channel).where(
+                        Channel.channel_id == message.chat.id,
+                        Channel.is_active == True
+                    )
+                )
+                channel = result.scalar_one_or_none()
+                
+                if channel and (channel.mode == 'reaction' or channel.mode == 'both'):
+                    logger.info(f"Processing channel post {message.message_id} in channel {channel.channel_id}")
+                    await self.post_monitor_service.process_channel_post(channel, message)
+                
+            finally:
+                await session.close()
+                
+        except Exception as e:
+            logger.error(f"Error handling channel post: {e}", exc_info=True)
+    
     async def start_bot(self) -> None:
         """Start the bot"""
         try:
             # Validate bot token
             bot_info = await self.bot.get_me()
             logger.info(f"Bot started: @{bot_info.username} ({bot_info.first_name})")
+            
+            # Initialize reaction boost services
+            await self._initialize_services()
             
             # Set bot commands
             await self._set_bot_commands()

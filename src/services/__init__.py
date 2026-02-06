@@ -7,6 +7,9 @@ from .comment_analyzer import CommentAnalyzer
 from .comment_monitor import CommentMonitor
 from .response_generator import ResponseGenerator
 from .channel_manager import ChannelManager
+from .activity_logger import ActivityLogger
+from .reaction_boost_service import ReactionBoostService
+from .post_monitor_service import PostMonitorService
 
 __all__ = [
     "AIService",
@@ -15,4 +18,7 @@ __all__ = [
     "CommentMonitor",
     "ResponseGenerator",
     "ChannelManager",
+    "ActivityLogger",
+    "ReactionBoostService",
+    "PostMonitorService",
 ]

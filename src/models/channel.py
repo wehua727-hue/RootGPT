@@ -36,11 +36,21 @@ class Channel(Base, TimestampMixin):
     # Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
+    # Operational mode: 'comment', 'reaction', or 'both'
+    mode: Mapped[str] = mapped_column(String(20), default='comment', nullable=False)
+    
+    # Reaction boost settings (JSON)
+    reaction_settings: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    
     # Relationships
     comments = relationship("Comment", back_populates="channel", cascade="all, delete-orphan")
     responses = relationship("Response", back_populates="channel", cascade="all, delete-orphan")
     templates = relationship("Template", back_populates="channel", cascade="all, delete-orphan")
     statistics = relationship("Statistics", back_populates="channel", cascade="all, delete-orphan")
+    boosted_posts = relationship("BoostedPost", back_populates="channel", cascade="all, delete-orphan")
+    activity_logs = relationship("ActivityLog", back_populates="channel", cascade="all, delete-orphan")
+    boosted_posts = relationship("BoostedPost", back_populates="channel", cascade="all, delete-orphan")
+    activity_logs = relationship("ActivityLog", back_populates="channel", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
         return f"<Channel(id={self.id}, channel_id={self.channel_id}, title='{self.channel_title}')>"
@@ -59,6 +69,8 @@ class Channel(Base, TimestampMixin):
             "trigger_words": self.trigger_words,
             "admin_user_ids": self.admin_user_ids,
             "is_active": self.is_active,
+            "mode": self.mode,
+            "reaction_settings": self.reaction_settings,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
