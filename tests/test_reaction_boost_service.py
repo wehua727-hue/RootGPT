@@ -13,7 +13,7 @@ from sqlalchemy import select
 from src.models import Base, Channel, BoostedPost, ActivityLog
 from src.models.reaction_settings import ReactionSettings
 from src.services.reaction_boost_service import ReactionBoostService
-from telegram.error import RetryAfter, Forbidden
+from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
 
 
 @pytest_asyncio.fixture

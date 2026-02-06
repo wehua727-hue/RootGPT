@@ -14,6 +14,7 @@ from src.models.base import Base
 from src.models.channel import Channel
 from src.services.post_monitor_service import PostMonitorService
 from src.services.reaction_boost_service import ReactionBoostService
+from aiogram.exceptions import TelegramAPIError
 
 
 @pytest_asyncio.fixture
@@ -202,10 +203,9 @@ class TestFetchNewPosts:
     @pytest.mark.asyncio
     async def test_fetch_new_posts_with_telegram_error(self, post_monitor_service, sample_channel, mock_bot):
         """Test handling of Telegram API errors"""
-        from telegram.error import TelegramError
         
         # Mock get_chat to raise an error
-        mock_bot.get_chat.side_effect = TelegramError("Channel not found")
+        mock_bot.get_chat.side_effect = TelegramAPIError("Channel not found")
         
         # Fetch new posts
         posts = await post_monitor_service._fetch_new_posts(sample_channel)
@@ -369,10 +369,9 @@ class TestMonitorChannels:
     @pytest.mark.asyncio
     async def test_monitor_channels_handles_telegram_error(self, post_monitor_service, sample_channel, mock_bot):
         """Test that Telegram errors are handled gracefully"""
-        from telegram.error import TelegramError
         
         # Mock get_chat to raise an error
-        mock_bot.get_chat.side_effect = TelegramError("API Error")
+        mock_bot.get_chat.side_effect = TelegramAPIError("API Error")
         
         # Should not raise error
         await post_monitor_service.monitor_channels()

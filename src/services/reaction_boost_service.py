@@ -9,8 +9,9 @@ from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Bot, Message
-from telegram.error import TelegramError, RetryAfter, Forbidden
+from aiogram import Bot
+from aiogram.types import Message
+from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter, TelegramForbiddenError
 
 from ..models.boosted_post import BoostedPost
 from ..models.channel import Channel
@@ -94,7 +95,7 @@ class ReactionBoostService:
                     delay = random.uniform(settings.delay_min, settings.delay_max)
                     await asyncio.sleep(delay)
                     
-            except TelegramError as e:
+            except TelegramAPIError as e:
                 # Requirement 4.3: Skip reaction after max retries and continue
                 await self._handle_api_error(channel, post, emoji, e)
         
@@ -158,13 +159,15 @@ class ReactionBoostService:
         """
         for attempt in range(self.max_retries):
             try:
+                # Aiogram 3.x format for reactions
                 await self.bot.set_message_reaction(
                     chat_id=channel_id,
                     message_id=message_id,
-                    reaction=[{"type": "emoji", "emoji": emoji}]
+                    reaction=[{"type": "emoji", "emoji": emoji}],
+                    is_big=False
                 )
                 return
-            except RetryAfter as e:
+            except TelegramRetryAfter as e:
                 if attempt < self.max_retries - 1:
                     # Wait for the specified retry-after duration
                     await asyncio.sleep(e.retry_after)
@@ -207,7 +210,7 @@ class ReactionBoostService:
         
         Requirements: 4.2, 4.3, 4.4, 4.5
         """
-        if isinstance(error, Forbidden):
+        if isinstance(error, TelegramForbiddenError):
             # Requirement 4.4: Log permission error and disable reaction mode
             await self.logger.log_error(
                 channel.id, post.message_id,
@@ -216,7 +219,7 @@ class ReactionBoostService:
             )
             # Disable reaction mode for this channel
             await self._disable_reaction_mode(channel)
-        elif isinstance(error, RetryAfter):
+        elif isinstance(error, TelegramRetryAfter):
             # Requirement 4.2: Log rate limit error
             await self.logger.log_error(
                 channel.id, post.message_id,

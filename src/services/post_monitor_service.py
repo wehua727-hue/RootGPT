@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Bot, Message
-from telegram.error import TelegramError
+from aiogram import Bot
+from aiogram.types import Message
+from aiogram.exceptions import TelegramAPIError
 
 from ..models.channel import Channel
 from .reaction_boost_service import ReactionBoostService
@@ -81,7 +82,7 @@ class PostMonitorService:
                             # Comment monitoring happens in discussion groups, not channels
                             pass
                 
-                except TelegramError as e:
+                except TelegramAPIError as e:
                     logger.error(
                         f"Telegram API error for channel {channel.channel_id}: {e}",
                         exc_info=True
@@ -161,7 +162,7 @@ class PostMonitorService:
                 
                 return new_posts
                 
-            except TelegramError as e:
+            except TelegramAPIError as e:
                 logger.warning(f"Could not fetch messages from channel {channel_id}: {e}")
                 return []
         

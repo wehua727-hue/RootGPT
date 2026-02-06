@@ -223,7 +223,7 @@ This implementation plan adds a reaction boost feature to the existing Telegram 
     - _Requirements: 7.4, 7.5_
 
 - [ ] 9. Integration and backward compatibility
-  - [~] 9.1 Update main bot initialization
+  - [x] 9.1 Update main bot initialization
     - Initialize ReactionBoostService
     - Initialize PostMonitorService with both services
     - Start monitoring loop
