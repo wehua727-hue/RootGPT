@@ -14,6 +14,48 @@ from src.config import Config
 from src.database import Database
 
 
+async def setup_default_channel(database: Database):
+    """Setup default channel if not exists"""
+    try:
+        from src.models import Channel
+        from sqlalchemy import select
+        
+        discussion_group_id = -1003022082883  # Your discussion group ID
+        
+        session = await database.get_session()
+        try:
+            # Check if channel exists
+            result = await session.execute(
+                select(Channel).where(Channel.discussion_group_id == discussion_group_id)
+            )
+            existing = result.scalar_one_or_none()
+            
+            if not existing:
+                # Create default channel
+                channel = Channel(
+                    channel_id=0,
+                    channel_title="RootGPT Channel",
+                    discussion_group_id=discussion_group_id,
+                    ai_enabled=True,
+                    ai_provider="groq",
+                    trigger_words=[],
+                    rate_limit_minutes=1,
+                    daily_limit=1000
+                )
+                
+                session.add(channel)
+                await session.commit()
+                logging.info(f"✅ Default channel created: {channel.channel_title}")
+            else:
+                logging.info(f"✅ Channel already exists: {existing.channel_title}")
+        
+        finally:
+            await session.close()
+    
+    except Exception as e:
+        logging.error(f"Failed to setup default channel: {e}")
+
+
 async def main():
     """Main application entry point"""
     try:
@@ -36,6 +78,9 @@ async def main():
         # Initialize database
         database = Database(config.DATABASE_URL)
         await database.initialize()
+        
+        # Setup default channel (for Railway deployment)
+        await setup_default_channel(database)
         
         # Initialize bot handler
         bot_handler = BotHandler(config, database)
