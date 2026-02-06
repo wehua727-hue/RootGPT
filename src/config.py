@@ -22,6 +22,10 @@ class Config:
             
         self.WEBHOOK_URL = os.getenv("WEBHOOK_URL")
         
+        # Additional Bot Tokens for Multi-Reaction Support
+        reaction_tokens = os.getenv("REACTION_BOT_TOKENS", "")
+        self.REACTION_BOT_TOKENS = [token.strip() for token in reaction_tokens.split(",") if token.strip()]
+        
         # AI Service Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
         self.GROQ_API_KEY = os.getenv("GROQ_API_KEY")
