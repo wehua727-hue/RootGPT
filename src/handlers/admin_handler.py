@@ -342,37 +342,25 @@ class AdminHandler:
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
             # Store post link in a simpler format for callback
-            # Extract just the essential parts
-            try:
-                if 't.me/' in post_link:
-                    link_parts = post_link.split('/')
-                    if '/c/' in post_link:
-                        channel_part = link_parts[-2]
-                        post_id = link_parts[-1]
-                        callback_prefix = f"bm_c_{channel_part}_{post_id}"
-                    else:
-                        username = link_parts[-2].replace('@', '')
-                        post_id = link_parts[-1]
-                        callback_prefix = f"bm_u_{username}_{post_id}"
-                else:
-                    await message.reply("❌ Noto'g'ri link format!")
-                    return
-            except Exception as e:
-                await message.reply(f"❌ Link parse qilishda xatolik: {e}")
-                return
+            # Use a simple counter instead of parsing the link
+            if not hasattr(self, '_custom_boost_counter'):
+                self._custom_boost_counter = 0
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="1 marta", callback_data=f"{callback_prefix}_1"),
-                    InlineKeyboardButton(text="2 marta", callback_data=f"{callback_prefix}_2"),
-                    InlineKeyboardButton(text="3 marta", callback_data=f"{callback_prefix}_3"),
-                ],
-                [
-                    InlineKeyboardButton(text="4 marta", callback_data=f"{callback_prefix}_4"),
-                    InlineKeyboardButton(text="5 marta", callback_data=f"{callback_prefix}_5"),
-                    InlineKeyboardButton(text="10 marta", callback_data=f"{callback_prefix}_10"),
-                ]
-            ])
+            self._custom_boost_counter += 1
+            callback_id = self._custom_boost_counter
+            callback_prefix = f"cb_{callback_id}"
+            
+            keyboard_buttons = []
+            row = []
+            for count in [1, 2, 3, 4, 5, 10]:
+                row.append(InlineKeyboardButton(text=f"{count} marta", callback_data=f"{callback_prefix}_count_{count}"))
+                if len(row) == 3:
+                    keyboard_buttons.append(row)
+                    row = []
+            if row:
+                keyboard_buttons.append(row)
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
             
             await message.reply(
                 f"🔢 Necha marta reaksiya qo'shilsin?\n\n"
@@ -519,20 +507,15 @@ class AdminHandler:
             await message.reply("❌ Noto'g'ri link format!")
             return
         
-        # Show emoji selection
-        try:
-            link_parts = post_link.split('/')
-            if '/c/' in post_link:
-                channel_part = link_parts[-2]
-                post_id = link_parts[-1]
-                callback_prefix = f"cb_c_{channel_part}_{post_id}"
-            else:
-                username = link_parts[-2].replace('@', '')
-                post_id = link_parts[-1]
-                callback_prefix = f"cb_u_{username}_{post_id}"
-        except Exception as e:
-            await message.reply(f"❌ Link parse qilishda xatolik: {e}")
-            return
+        # Initialize session storage
+        if not hasattr(self, '_custom_boost_selections'):
+            self._custom_boost_selections = {}
+        if not hasattr(self, '_custom_boost_counter'):
+            self._custom_boost_counter = 0
+        
+        # Generate unique session ID
+        self._custom_boost_counter += 1
+        session_id = self._custom_boost_counter
         
         # Show emoji selection keyboard
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -542,7 +525,7 @@ class AdminHandler:
         keyboard_buttons = []
         row = []
         for idx, emoji in enumerate(emojis):
-            row.append(InlineKeyboardButton(text=emoji, callback_data=f"{callback_prefix}_e_{idx}"))
+            row.append(InlineKeyboardButton(text=emoji, callback_data=f"cbs_{session_id}_e_{idx}"))
             if len(row) == 4:
                 keyboard_buttons.append(row)
                 row = []
@@ -550,7 +533,7 @@ class AdminHandler:
             keyboard_buttons.append(row)
         
         keyboard_buttons.append([
-            InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"{callback_prefix}_done")
+            InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"cbs_{session_id}_done")
         ])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -562,13 +545,10 @@ class AdminHandler:
             reply_markup=keyboard
         )
         
-        # Store selection in memory (temporary)
-        if not hasattr(self, '_custom_boost_selections'):
-            self._custom_boost_selections = {}
-        
-        self._custom_boost_selections[user_id] = {
+        # Store selection in memory with session ID
+        self._custom_boost_selections[session_id] = {
+            'user_id': user_id,
             'post_link': post_link,
-            'callback_prefix': callback_prefix,
             'emojis': [],
             'emoji_list': emojis  # Store emoji list for reference
         }
@@ -585,18 +565,34 @@ class AdminHandler:
         if not hasattr(self, '_custom_boost_selections'):
             self._custom_boost_selections = {}
         
-        if user_id not in self._custom_boost_selections:
-            await callback.answer("❌ Sessiya tugagan. Qaytadan /customboost buyrug'ini ishlating.")
-            return
-        
-        selection = self._custom_boost_selections[user_id]
-        
-        # Parse callback data: cb_c_1234_567_e_0 or cb_c_1234_567_done or cb_c_1234_567_count_3
+        # Parse callback data: cbs_<session_id>_<action>_<value>
+        # Examples: cbs_1_e_0, cbs_1_done, cbs_1_count_3, cbs_1_back
         parts = data.split("_")
         logger.info(f"Parsed parts: {parts}, len={len(parts)}")
         
-        # Check what type of callback this is
-        if 'done' in parts:
+        if len(parts) < 3 or parts[0] != "cbs":
+            logger.warning(f"Invalid callback format: {data}")
+            await callback.answer("❌ Noto'g'ri buyruq")
+            return
+        
+        session_id = int(parts[1])
+        
+        # Find session
+        if session_id not in self._custom_boost_selections:
+            await callback.answer("❌ Sessiya tugagan. Qaytadan /customboost buyrug'ini ishlating.")
+            return
+        
+        selection = self._custom_boost_selections[session_id]
+        
+        # Verify user owns this session
+        if selection['user_id'] != user_id:
+            await callback.answer("❌ Bu sizning sessiyangiz emas.")
+            return
+        
+        action = parts[2]
+        
+        # Handle different actions
+        if action == "done":
             logger.info("Done button clicked")
             # Done selecting emojis, now ask for count
             if not selection['emojis']:
@@ -606,21 +602,19 @@ class AdminHandler:
             # Show count selection
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
-            callback_prefix = selection['callback_prefix']
-            
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="1 ta", callback_data=f"{callback_prefix}_count_1"),
-                    InlineKeyboardButton(text="2 ta", callback_data=f"{callback_prefix}_count_2"),
-                    InlineKeyboardButton(text="3 ta", callback_data=f"{callback_prefix}_count_3"),
+                    InlineKeyboardButton(text="1 ta", callback_data=f"cbs_{session_id}_count_1"),
+                    InlineKeyboardButton(text="2 ta", callback_data=f"cbs_{session_id}_count_2"),
+                    InlineKeyboardButton(text="3 ta", callback_data=f"cbs_{session_id}_count_3"),
                 ],
                 [
-                    InlineKeyboardButton(text="4 ta", callback_data=f"{callback_prefix}_count_4"),
-                    InlineKeyboardButton(text="5 ta", callback_data=f"{callback_prefix}_count_5"),
-                    InlineKeyboardButton(text="10 ta", callback_data=f"{callback_prefix}_count_10"),
+                    InlineKeyboardButton(text="4 ta", callback_data=f"cbs_{session_id}_count_4"),
+                    InlineKeyboardButton(text="5 ta", callback_data=f"cbs_{session_id}_count_5"),
+                    InlineKeyboardButton(text="10 ta", callback_data=f"cbs_{session_id}_count_10"),
                 ],
                 [
-                    InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"{callback_prefix}_back")
+                    InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"cbs_{session_id}_back")
                 ]
             ])
             
@@ -636,31 +630,69 @@ class AdminHandler:
             
             await callback.answer()
         
-        elif 'count' in parts:
+        elif action == "count":
             logger.info("Count button clicked")
-            # Count selected: cb_c_1234_567_count_3
-            count_idx = parts.index('count')
-            count = int(parts[count_idx + 1])
+            # Count selected: cbs_1_count_3
+            if len(parts) < 4:
+                await callback.answer("❌ Noto'g'ri format")
+                return
+            
+            count = int(parts[3])
             logger.info(f"Count: {count}")
             
             # Now boost the post
             await self._custom_boost_post(callback.message, selection, count)
             
             # Clear selection
-            del self._custom_boost_selections[user_id]
+            del self._custom_boost_selections[session_id]
             
             await callback.answer()
         
-        elif 'back' in parts:
+        elif action == "back":
             logger.info("Back button clicked")
-            # Go back to emoji selection
-            await self.handle_customboost_command(callback.message)
+            # Go back to emoji selection - rebuild the emoji keyboard
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            emoji_list = selection['emoji_list']
+            
+            keyboard_buttons = []
+            row = []
+            for idx, e in enumerate(emoji_list):
+                # Add checkmark if selected
+                text = f"✅ {e}" if e in selection['emojis'] else e
+                row.append(InlineKeyboardButton(text=text, callback_data=f"cbs_{session_id}_e_{idx}"))
+                if len(row) == 4:
+                    keyboard_buttons.append(row)
+                    row = []
+            if row:
+                keyboard_buttons.append(row)
+            
+            keyboard_buttons.append([
+                InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"cbs_{session_id}_done")
+            ])
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+            
+            selected_text = ' '.join(selection['emojis']) if selection['emojis'] else 'Hech narsa tanlanmagan'
+            
+            await callback.message.edit_text(
+                f"😊 <b>Emojilarni tanlang</b>\n\n"
+                f"Post: {selection['post_link']}\n\n"
+                f"<b>Tanlangan:</b> {selected_text}\n\n"
+                f"Qaysi emojilarni qo'shmoqchisiz? (bir nechta tanlash mumkin)",
+                reply_markup=keyboard
+            )
+            
             await callback.answer()
         
-        elif len(parts) >= 5 and parts[4] == 'e':
+        elif action == "e":
             logger.info("Emoji button clicked")
-            # Emoji selection: cb_c_1234_567_e_0 (index)
-            emoji_idx = int(parts[5])
+            # Emoji selection: cbs_1_e_0 (index)
+            if len(parts) < 4:
+                await callback.answer("❌ Noto'g'ri format")
+                return
+            
+            emoji_idx = int(parts[3])
             emoji = selection['emoji_list'][emoji_idx]
             logger.info(f"Emoji: {emoji}, index: {emoji_idx}")
             
@@ -677,7 +709,6 @@ class AdminHandler:
             # Rebuild keyboard with updated selection
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
-            callback_prefix = selection['callback_prefix']
             emoji_list = selection['emoji_list']
             
             keyboard_buttons = []
@@ -685,7 +716,7 @@ class AdminHandler:
             for idx, e in enumerate(emoji_list):
                 # Add checkmark if selected
                 text = f"✅ {e}" if e in selection['emojis'] else e
-                row.append(InlineKeyboardButton(text=text, callback_data=f"{callback_prefix}_e_{idx}"))
+                row.append(InlineKeyboardButton(text=text, callback_data=f"cbs_{session_id}_e_{idx}"))
                 if len(row) == 4:
                     keyboard_buttons.append(row)
                     row = []
@@ -693,7 +724,7 @@ class AdminHandler:
                 keyboard_buttons.append(row)
             
             keyboard_buttons.append([
-                InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"{callback_prefix}_done")
+                InlineKeyboardButton(text="✅ Tayyor (tanlangan emojilar bilan)", callback_data=f"cbs_{session_id}_done")
             ])
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
@@ -707,7 +738,7 @@ class AdminHandler:
             )
         
         else:
-            logger.warning(f"Unknown callback format: {data}")
+            logger.warning(f"Unknown action: {action}")
             await callback.answer("❌ Noto'g'ri buyruq")
     
     async def _custom_boost_post(self, message: Message, selection: dict, count_per_emoji: int) -> None:
@@ -883,9 +914,10 @@ class AdminHandler:
                     return
                 
                 await self._boost_post_multiple_times(callback.message, post_link, count)
-        elif data.startswith("cb_"):
-            # Custom boost callbacks
+        elif data.startswith("cbs_"):
+            # Custom boost callbacks (session-based)
             await self._handle_custom_boost_callback(callback)
+            return  # Don't call callback.answer() again since it's handled in the method
         
         await callback.answer()
     
