@@ -13,6 +13,9 @@ from .user_greeting import UserGreeting
 from .boosted_post import BoostedPost
 from .activity_log import ActivityLog
 from .reaction_settings import ReactionSettings
+from .repost_config import RepostConfig
+from .repost_log import RepostLog
+from .repost_stats import RepostStats
 
 __all__ = [
     "Base",
@@ -30,4 +33,7 @@ __all__ = [
     "BoostedPost",
     "ActivityLog",
     "ReactionSettings",
+    "RepostConfig",
+    "RepostLog",
+    "RepostStats",
 ]

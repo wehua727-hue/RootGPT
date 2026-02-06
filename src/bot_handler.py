@@ -15,8 +15,10 @@ from .config import Config
 from .database import Database
 from .handlers.admin_handler import AdminHandler
 from .handlers.message_handler import MessageHandler
+from .handlers.autorepost_handler import AutoRepostHandler
 from .services.reaction_boost_service import ReactionBoostService
 from .services.post_monitor_service import PostMonitorService
+from .services.repost_scheduler import RepostScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +48,12 @@ class BotHandler:
         # Initialize handlers
         self.admin_handler = AdminHandler(self.bot, self.database, self.config)
         self.message_handler = MessageHandler(self.bot, self.database, self.config)
+        self.autorepost_handler = AutoRepostHandler(self.bot, self.config)
         
         # Initialize reaction boost services
         self.reaction_boost_service: Optional[ReactionBoostService] = None
         self.post_monitor_service: Optional[PostMonitorService] = None
+        self.repost_scheduler: Optional[RepostScheduler] = None
         
         # Register handlers
         self._register_handlers()
@@ -94,6 +98,12 @@ class BotHandler:
         self.dp.message.register(
             self.admin_handler.handle_customboost_command,
             lambda message: message.text and message.text.startswith('/customboost')
+        )
+        
+        # Auto-repost commands
+        self.dp.message.register(
+            self._handle_autorepost_command,
+            lambda message: message.text and message.text.startswith('/autorepost')
         )
         
         # Callback queries for admin interface
@@ -152,6 +162,14 @@ class BotHandler:
             )
             logger.info("PostMonitorService initialized")
             
+            # Initialize RepostScheduler
+            self.repost_scheduler = RepostScheduler(
+                self.bot,
+                self.database.session_maker,
+                interval_seconds=120  # Check every 2 minutes
+            )
+            logger.info("RepostScheduler initialized")
+            
         except Exception as e:
             logger.error(f"Failed to initialize services: {e}")
             # Don't raise - bot can still work without reaction boosting
@@ -197,6 +215,46 @@ class BotHandler:
         except Exception as e:
             logger.error(f"Error handling channel post: {e}", exc_info=True)
     
+    async def _handle_autorepost_command(self, message: Message) -> None:
+        """Handle /autorepost commands"""
+        try:
+            session = await self.database.get_session()
+            
+            # Parse subcommand
+            parts = message.text.split()
+            if len(parts) < 2:
+                await message.reply(
+                    "📋 Auto-repost komandalar:\n\n"
+                    "/autorepost add <source> <target> - Kanal qo'shish\n"
+                    "/autorepost list - Kanallar ro'yxati\n"
+                    "/autorepost remove <channel_id> - Kanalni o'chirish\n"
+                    "/autorepost enable <channel_id> - Kanalni yoqish\n"
+                    "/autorepost disable <channel_id> - Kanalni o'chirish\n"
+                    "/autorepost stats [channel_id] - Statistika"
+                )
+                return
+            
+            subcommand = parts[1].lower()
+            
+            if subcommand == 'add':
+                await self.autorepost_handler.handle_autorepost_add(message, session)
+            elif subcommand == 'list':
+                await self.autorepost_handler.handle_autorepost_list(message, session)
+            elif subcommand == 'remove':
+                await self.autorepost_handler.handle_autorepost_remove(message, session)
+            elif subcommand == 'enable':
+                await self.autorepost_handler.handle_autorepost_enable(message, session)
+            elif subcommand == 'disable':
+                await self.autorepost_handler.handle_autorepost_disable(message, session)
+            elif subcommand == 'stats':
+                await self.autorepost_handler.handle_autorepost_stats(message, session)
+            else:
+                await message.reply(f"❌ Noma'lum komanda: {subcommand}")
+                
+        except Exception as e:
+            logger.error(f"Error handling autorepost command: {e}", exc_info=True)
+            await message.reply(f"❌ Xatolik: {e}")
+    
     async def start_bot(self) -> None:
         """Start the bot"""
         try:
@@ -206,6 +264,11 @@ class BotHandler:
             
             # Initialize reaction boost services
             await self._initialize_services()
+            
+            # Start repost scheduler
+            if self.repost_scheduler:
+                await self.repost_scheduler.start()
+                logger.info("RepostScheduler started")
             
             # Set bot commands
             await self._set_bot_commands()
@@ -224,6 +287,11 @@ class BotHandler:
     async def stop_bot(self) -> None:
         """Stop the bot"""
         try:
+            # Stop repost scheduler
+            if self.repost_scheduler:
+                await self.repost_scheduler.stop()
+                logger.info("RepostScheduler stopped")
+            
             if self.config.WEBHOOK_URL:
                 # Delete webhook
                 await self.bot.delete_webhook()
@@ -248,6 +316,7 @@ class BotHandler:
             BotCommand(command="boostmulti", description="Postga ko'p marta reaksiya"),
             BotCommand(command="customboost", description="Emoji va sonni tanlash"),
             BotCommand(command="fixchannel", description="Kanal ID ni tuzatish"),
+            BotCommand(command="autorepost", description="Avtomatik repost sozlamalari"),
         ]
         
         await self.bot.set_my_commands(commands)
