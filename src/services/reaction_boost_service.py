@@ -47,23 +47,34 @@ class ReactionBoostService:
         
         Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"boost_post called for channel {channel.id}, post {post.message_id}")
+        
         # Requirement 3.6: Check if already boosted (early return)
         if await self._is_already_boosted(channel.id, post.message_id):
+            logger.info(f"Post {post.message_id} already boosted, skipping")
             return
         
         # Requirement 3.2: Parse and validate reaction settings
         if not channel.reaction_settings:
+            logger.warning(f"Channel {channel.id} has no reaction_settings")
             return
+        
+        logger.info(f"Channel reaction_settings: {channel.reaction_settings}")
         
         settings = ReactionSettings.from_dict(channel.reaction_settings)
         
         # Check if auto-boost is enabled
         if not settings.auto_boost:
+            logger.info(f"Auto-boost disabled for channel {channel.id}")
             return
         
         # Validate settings
         is_valid, error_msg = settings.validate()
         if not is_valid:
+            logger.error(f"Invalid reaction settings: {error_msg}")
             await self.logger.log_error(
                 channel.id, post.message_id,
                 'invalid_settings',
@@ -73,12 +84,14 @@ class ReactionBoostService:
         
         # Requirement 3.7: Select random emojis
         emojis = self._select_random_emojis(settings)
+        logger.info(f"Selected emojis: {emojis}")
         
         # Requirement 3.3, 3.4: Loop through emojis and add reactions with delays
         reactions_added = 0
         
         for emoji in emojis:
             try:
+                logger.info(f"Adding reaction {emoji} to post {post.message_id}")
                 # Add reaction with retry logic
                 await self._add_reaction_with_retry(
                     str(channel.channel_id), 
@@ -86,6 +99,7 @@ class ReactionBoostService:
                     emoji
                 )
                 reactions_added += 1
+                logger.info(f"Successfully added reaction {emoji}")
                 
                 # Requirement 6.1: Log each reaction added
                 await self.logger.log_reaction_added(channel.id, post.message_id, emoji)
@@ -93,18 +107,23 @@ class ReactionBoostService:
                 # Requirement 3.4: Random delay before next reaction
                 if reactions_added < len(emojis):  # Don't delay after last reaction
                     delay = random.uniform(settings.delay_min, settings.delay_max)
+                    logger.info(f"Waiting {delay:.2f} seconds before next reaction")
                     await asyncio.sleep(delay)
                     
             except TelegramAPIError as e:
+                logger.error(f"Error adding reaction {emoji}: {e}")
                 # Requirement 4.3: Skip reaction after max retries and continue
                 await self._handle_api_error(channel, post, emoji, e)
         
         # Requirement 3.5: Mark post as boosted
         if reactions_added > 0:
+            logger.info(f"Marking post {post.message_id} as boosted with {reactions_added} reactions")
             await self._mark_as_boosted(channel.id, post.message_id, reactions_added, emojis)
             
             # Requirement 6.2: Log boost completion
             await self.logger.log_boost_completed(channel.id, post.message_id, reactions_added)
+        else:
+            logger.warning(f"No reactions added to post {post.message_id}")
     
     async def _is_already_boosted(self, channel_id: int, post_id: int) -> bool:
         """

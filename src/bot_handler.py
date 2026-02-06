@@ -92,14 +92,18 @@ class BotHandler:
         )
         
         # Error handler
-        self.dp.error.register(self._error_handler)
+        self.dp.errors.register(self._error_handler)
     
-    async def _error_handler(self, update: Update, exception: Exception) -> None:
+    async def _error_handler(self, event, data: dict) -> None:
         """Handle errors during message processing"""
-        logger.error(f"Error processing update {update.update_id}: {exception}")
+        exception = data.get('exception')
+        update = data.get('update')
+        
+        if exception:
+            logger.error(f"Error processing update: {exception}", exc_info=True)
         
         # Try to send error message to admin if possible
-        if update.message and update.message.from_user:
+        if update and update.message and update.message.from_user:
             user_id = update.message.from_user.id
             if user_id in self.config.ADMIN_USER_IDS:
                 try:
@@ -135,7 +139,10 @@ class BotHandler:
     async def _handle_channel_post(self, message: Message) -> None:
         """Handle new posts in channels (for reaction boosting)"""
         try:
+            logger.info(f"Received channel post: chat_id={message.chat.id}, message_id={message.message_id}")
+            
             if not self.post_monitor_service:
+                logger.warning("PostMonitorService not initialized")
                 return
             
             # Get channel from database
@@ -152,9 +159,17 @@ class BotHandler:
                 )
                 channel = result.scalar_one_or_none()
                 
+                if not channel:
+                    logger.warning(f"Channel {message.chat.id} not found in database")
+                    return
+                
+                logger.info(f"Found channel: {channel.channel_title}, mode={channel.mode}, reaction_settings={channel.reaction_settings}")
+                
                 if channel and (channel.mode == 'reaction' or channel.mode == 'both'):
                     logger.info(f"Processing channel post {message.message_id} in channel {channel.channel_id}")
                     await self.post_monitor_service.process_channel_post(channel, message)
+                else:
+                    logger.info(f"Channel mode is '{channel.mode}', skipping reaction boost")
                 
             finally:
                 await session.close()

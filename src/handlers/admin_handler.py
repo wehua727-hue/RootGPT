@@ -557,7 +557,13 @@ class AdminHandler:
             channel.reaction_settings = settings
             
             await session.commit()
-            await self._prompt_set_emojis(message, channel_id, edit=True)
+            
+            # Refresh the emoji selection screen
+            try:
+                await self._prompt_set_emojis(message, channel_id, edit=True)
+            except Exception:
+                # If edit fails, send new message
+                await self._prompt_set_emojis(message, channel_id, edit=False)
         finally:
             await session.close()
     
