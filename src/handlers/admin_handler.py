@@ -59,6 +59,113 @@ class AdminHandler:
         
         await self._show_settings_menu(message)
     
+    async def handle_boost_command(self, message: Message) -> None:
+        """Handle /boost command - manually boost a post"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await message.reply("❌ Sizda admin huquqlari yo'q.")
+            return
+        
+        # Parse command: /boost <channel_id> <message_id>
+        parts = message.text.split()
+        if len(parts) != 3:
+            await message.reply(
+                "❌ Noto'g'ri format!\n\n"
+                "To'g'ri format:\n"
+                "<code>/boost -1001234567890 123</code>\n\n"
+                "Bu yerda:\n"
+                "• -1001234567890 - kanal ID\n"
+                "• 123 - post ID (message ID)"
+            )
+            return
+        
+        try:
+            channel_id = int(parts[1])
+            post_id = int(parts[2])
+        except ValueError:
+            await message.reply("❌ Kanal ID va Post ID raqam bo'lishi kerak!")
+            return
+        
+        # Get channel from database
+        session = await self.database.get_session()
+        try:
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Channel).where(
+                    Channel.channel_id == channel_id,
+                    Channel.is_active == True
+                )
+            )
+            channel = result.scalar_one_or_none()
+            
+            if not channel:
+                await message.reply(
+                    f"❌ Kanal topilmadi!\n\n"
+                    f"Kanal ID: <code>{channel_id}</code>\n\n"
+                    f"Avval kanalni qo'shing: /start"
+                )
+                return
+            
+            if not channel.reaction_settings:
+                await message.reply(
+                    f"❌ Kanal uchun reaksiya sozlamalari yo'q!\n\n"
+                    f"Avval reaksiya sozlamalarini o'rnating:\n"
+                    f"/start → Kanallar → {channel.channel_title} → Reaksiya sozlamalari"
+                )
+                return
+            
+            # Try to get the message
+            try:
+                msg = await self.bot.forward_message(
+                    chat_id=user_id,
+                    from_chat_id=channel_id,
+                    message_id=post_id
+                )
+                await msg.delete()
+            except Exception:
+                pass  # Message might not be forwardable
+            
+            # Add reactions
+            from ..services.reaction_boost_service import ReactionBoostService
+            from ..models.reaction_settings import ReactionSettings
+            
+            settings = ReactionSettings.from_dict(channel.reaction_settings)
+            
+            # Create a fake Message object for boost_post
+            class FakeMessage:
+                def __init__(self, chat_id, message_id):
+                    self.chat = type('obj', (object,), {'id': chat_id})()
+                    self.message_id = message_id
+            
+            fake_msg = FakeMessage(channel_id, post_id)
+            
+            # Initialize service
+            reaction_service = ReactionBoostService(self.bot, session)
+            
+            await message.reply(
+                f"⏳ Reaksiyalar qo'shilmoqda...\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}\n"
+                f"Emojilar: {' '.join(settings.emojis[:settings.reaction_count])}"
+            )
+            
+            # Boost the post
+            await reaction_service.boost_post(channel, fake_msg)
+            
+            await message.reply(
+                f"✅ Reaksiyalar qo'shildi!\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}"
+            )
+            
+        except Exception as e:
+            await message.reply(f"❌ Xatolik: {str(e)}")
+            import logging
+            logging.error(f"Error in boost command: {e}", exc_info=True)
+        finally:
+            await session.close()
+    
     async def handle_callback_query(self, callback: CallbackQuery) -> None:
         """Handle callback queries from inline keyboards"""
         user_id = callback.from_user.id

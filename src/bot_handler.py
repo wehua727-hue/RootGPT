@@ -76,6 +76,11 @@ class BotHandler:
             lambda message: message.text and message.text.startswith('/settings')
         )
         
+        self.dp.message.register(
+            self.admin_handler.handle_boost_command,
+            lambda message: message.text and message.text.startswith('/boost')
+        )
+        
         # Callback queries for admin interface
         self.dp.callback_query.register(
             self.admin_handler.handle_callback_query
@@ -224,6 +229,7 @@ class BotHandler:
             BotCommand(command="start", description="Bot boshqaruv paneli"),
             BotCommand(command="stats", description="Statistika ko'rish"),
             BotCommand(command="settings", description="Sozlamalar"),
+            BotCommand(command="boost", description="Postga reaksiya qo'shish"),
         ]
         
         await self.bot.set_my_commands(commands)
