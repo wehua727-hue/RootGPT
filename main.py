@@ -37,8 +37,17 @@ async def main():
         database = Database(config.DATABASE_URL)
         await database.initialize()
         
-        # Initialize and start bot
+        # Initialize bot handler
         bot_handler = BotHandler(config, database)
+        
+        # Delete webhook if exists (important for Railway/cloud deployment)
+        try:
+            await bot_handler.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook deleted successfully")
+        except Exception as e:
+            logger.warning(f"Failed to delete webhook: {e}")
+        
+        # Start bot
         await bot_handler.start_bot()
         
         logger.info("Bot started successfully!")
