@@ -3,6 +3,7 @@ Admin command handler for bot management
 """
 
 import logging
+import asyncio
 from typing import Optional
 from aiogram import Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -209,7 +210,7 @@ class AdminHandler:
             )
             
             # Boost the post
-            await reaction_service.boost_post(channel, fake_msg)
+            await reaction_service.boost_post(channel, fake_msg, force=True)
             
             await message.reply(
                 f"✅ Reaksiyalar qo'shildi!\n\n"
@@ -303,6 +304,173 @@ class AdminHandler:
         finally:
             await session.close()
     
+    async def handle_boostmulti_command(self, message: Message) -> None:
+        """Handle /boostmulti command - boost a post multiple times"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await message.reply("❌ Sizda admin huquqlari yo'q.")
+            return
+        
+        # Parse command: /boostmulti <post_link> <count>
+        parts = message.text.split()
+        
+        if len(parts) < 2 or len(parts) > 3:
+            await message.reply(
+                "❌ Noto'g'ri format!\n\n"
+                "To'g'ri formatlar:\n"
+                "1. <code>/boostmulti https://t.me/channel/123</code> (so'raydi nechta)\n"
+                "2. <code>/boostmulti https://t.me/channel/123 5</code> (5 marta)\n\n"
+                "Bu buyruq bir postga bir necha marta reaksiya qo'shadi."
+            )
+            return
+        
+        post_link = parts[1]
+        
+        # Get count if provided, otherwise ask
+        if len(parts) == 3:
+            try:
+                count = int(parts[2])
+                if count < 1 or count > 10:
+                    await message.reply("❌ Soni 1 dan 10 gacha bo'lishi kerak!")
+                    return
+            except ValueError:
+                await message.reply("❌ Soni raqam bo'lishi kerak!")
+                return
+        else:
+            # Ask for count using inline keyboard
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="1 marta", callback_data=f"boostmulti_{post_link}_1"),
+                    InlineKeyboardButton(text="2 marta", callback_data=f"boostmulti_{post_link}_2"),
+                    InlineKeyboardButton(text="3 marta", callback_data=f"boostmulti_{post_link}_3"),
+                ],
+                [
+                    InlineKeyboardButton(text="4 marta", callback_data=f"boostmulti_{post_link}_4"),
+                    InlineKeyboardButton(text="5 marta", callback_data=f"boostmulti_{post_link}_5"),
+                    InlineKeyboardButton(text="10 marta", callback_data=f"boostmulti_{post_link}_10"),
+                ]
+            ])
+            
+            await message.reply(
+                "🔢 Necha marta reaksiya qo'shilsin?",
+                reply_markup=keyboard
+            )
+            return
+        
+        # Parse link and boost
+        await self._boost_post_multiple_times(message, post_link, count)
+    
+    async def _boost_post_multiple_times(self, message: Message, post_link: str, count: int) -> None:
+        """Boost a post multiple times"""
+        # Parse link
+        if 't.me/' not in post_link:
+            await message.reply("❌ Noto'g'ri link format!")
+            return
+        
+        try:
+            link_parts = post_link.split('/')
+            
+            if '/c/' in post_link:
+                # Private channel
+                channel_id_str = link_parts[-2]
+                post_id = int(link_parts[-1])
+                channel_id = int(f"-100{channel_id_str}")
+            else:
+                # Public channel
+                username = link_parts[-2]
+                post_id = int(link_parts[-1])
+                
+                try:
+                    chat = await self.bot.get_chat(f"@{username}")
+                    channel_id = chat.id
+                except Exception as e:
+                    await message.reply(f"❌ Kanal topilmadi: @{username}\n\nXatolik: {e}")
+                    return
+        except Exception as e:
+            await message.reply(f"❌ Link noto'g'ri formatda!\n\nXatolik: {e}")
+            return
+        
+        # Get channel from database
+        session = await self.database.get_session()
+        try:
+            from sqlalchemy import select
+            result = await session.execute(
+                select(Channel).where(
+                    Channel.channel_id == channel_id,
+                    Channel.is_active == True
+                )
+            )
+            channel = result.scalar_one_or_none()
+            
+            if not channel:
+                await message.reply(
+                    f"❌ Kanal topilmadi!\n\n"
+                    f"Kanal ID: <code>{channel_id}</code>\n\n"
+                    f"Avval /fixchannel buyrug'i bilan kanalni qo'shing."
+                )
+                return
+            
+            if not channel.reaction_settings:
+                await message.reply(
+                    f"❌ Kanal uchun reaksiya sozlamalari yo'q!\n\n"
+                    f"Avval reaksiya sozlamalarini o'rnating."
+                )
+                return
+            
+            # Initialize service
+            from ..services.reaction_boost_service import ReactionBoostService
+            from ..models.reaction_settings import ReactionSettings
+            
+            settings = ReactionSettings.from_dict(channel.reaction_settings)
+            reaction_service = ReactionBoostService(self.bot, session)
+            
+            # Create fake message
+            class FakeMessage:
+                def __init__(self, chat_id, message_id):
+                    self.chat = type('obj', (object,), {'id': chat_id})()
+                    self.message_id = message_id
+            
+            fake_msg = FakeMessage(channel_id, post_id)
+            
+            await message.reply(
+                f"⏳ Reaksiyalar qo'shilmoqda...\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}\n"
+                f"Marta: {count}\n"
+                f"Emojilar: {' '.join(settings.emojis[:settings.reaction_count])}"
+            )
+            
+            # Boost multiple times
+            total_reactions = 0
+            for i in range(count):
+                try:
+                    await reaction_service.boost_post(channel, fake_msg, force=True)
+                    total_reactions += settings.reaction_count
+                    
+                    # Small delay between boosts
+                    if i < count - 1:
+                        await asyncio.sleep(1)
+                except Exception as e:
+                    await message.reply(f"❌ {i+1}-marta xatolik: {str(e)}")
+                    break
+            
+            await message.reply(
+                f"✅ Reaksiyalar qo'shildi!\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Post ID: {post_id}\n"
+                f"Jami: {total_reactions} ta reaksiya"
+            )
+            
+        except Exception as e:
+            await message.reply(f"❌ Xatolik: {str(e)}")
+            import logging
+            logging.error(f"Error in boostmulti command: {e}", exc_info=True)
+        finally:
+            await session.close()
+    
     async def handle_callback_query(self, callback: CallbackQuery) -> None:
         """Handle callback queries from inline keyboards"""
         user_id = callback.from_user.id
@@ -354,6 +522,13 @@ class AdminHandler:
             channel_id = int(parts[1])
             count = int(parts[2])
             await self._set_reaction_count(callback.message, channel_id, count)
+        elif data.startswith("boostmulti_"):
+            # Format: boostmulti_<post_link>_<count>
+            parts = data.split("_", 2)  # Split into max 3 parts
+            if len(parts) == 3:
+                post_link = parts[1]
+                count = int(parts[2])
+                await self._boost_post_multiple_times(callback.message, post_link, count)
         
         await callback.answer()
     

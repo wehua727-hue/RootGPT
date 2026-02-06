@@ -37,23 +37,24 @@ class ReactionBoostService:
         self.logger = ActivityLogger(db_session)
         self.max_retries = 3
     
-    async def boost_post(self, channel: Channel, post: Message) -> None:
+    async def boost_post(self, channel: Channel, post: Message, force: bool = False) -> None:
         """
         Main entry point for boosting a post with reactions
         
         Args:
             channel: Channel model instance with configuration
             post: Telegram Message object representing the post
+            force: If True, skip already-boosted check (for manual boosting)
         
         Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
         """
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"boost_post called for channel {channel.id}, post {post.message_id}")
+        logger.info(f"boost_post called for channel {channel.id}, post {post.message_id}, force={force}")
         
-        # Requirement 3.6: Check if already boosted (early return)
-        if await self._is_already_boosted(channel.id, post.message_id):
+        # Requirement 3.6: Check if already boosted (early return) - skip if force=True
+        if not force and await self._is_already_boosted(channel.id, post.message_id):
             logger.info(f"Post {post.message_id} already boosted, skipping")
             return
         
@@ -66,8 +67,8 @@ class ReactionBoostService:
         
         settings = ReactionSettings.from_dict(channel.reaction_settings)
         
-        # Check if auto-boost is enabled
-        if not settings.auto_boost:
+        # Check if auto-boost is enabled (skip for manual/force boost)
+        if not force and not settings.auto_boost:
             logger.info(f"Auto-boost disabled for channel {channel.id}")
             return
         
@@ -115,10 +116,11 @@ class ReactionBoostService:
                 # Requirement 4.3: Skip reaction after max retries and continue
                 await self._handle_api_error(channel, post, emoji, e)
         
-        # Requirement 3.5: Mark post as boosted
+        # Requirement 3.5: Mark post as boosted (only if not force)
         if reactions_added > 0:
             logger.info(f"Marking post {post.message_id} as boosted with {reactions_added} reactions")
-            await self._mark_as_boosted(channel.id, post.message_id, reactions_added, emojis)
+            if not force:
+                await self._mark_as_boosted(channel.id, post.message_id, reactions_added, emojis)
             
             # Requirement 6.2: Log boost completion
             await self.logger.log_boost_completed(channel.id, post.message_id, reactions_added)
