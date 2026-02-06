@@ -109,9 +109,12 @@ class AdminHandler:
     
     async def _show_channels(self, message: Message, edit: bool = False) -> None:
         """Show list of configured channels"""
-        async with self.database.get_session() as session:
+        session = await self.database.get_session()
+        try:
             result = await session.execute(select(Channel).where(Channel.is_active == True))
             channels = result.scalars().all()
+        finally:
+            await session.close()
         
         if not channels:
             text = (
@@ -175,7 +178,8 @@ class AdminHandler:
     
     async def _show_statistics(self, message: Message, edit: bool = False) -> None:
         """Show bot statistics"""
-        async with self.database.get_session() as session:
+        session = await self.database.get_session()
+        try:
             # Get today's stats
             today = datetime.now().date()
             yesterday = today - timedelta(days=1)
@@ -207,6 +211,8 @@ class AdminHandler:
                 select(func.count(Channel.id)).where(Channel.is_active == True)
             )
             channels_count = total_channels.scalar() or 0
+        finally:
+            await session.close()
         
         text = (
             "📊 <b>Bot Statistikasi</b>\n\n"
@@ -249,7 +255,8 @@ class AdminHandler:
     
     async def _show_channel_details(self, message: Message, channel_id: int, edit: bool = False) -> None:
         """Show detailed channel information"""
-        async with self.database.get_session() as session:
+        session = await self.database.get_session()
+        try:
             result = await session.execute(select(Channel).where(Channel.id == channel_id))
             channel = result.scalar_one_or_none()
             
@@ -282,10 +289,13 @@ class AdminHandler:
                 await message.edit_text(text, reply_markup=keyboard)
             else:
                 await message.reply(text, reply_markup=keyboard)
+        finally:
+            await session.close()
     
     async def _toggle_ai(self, message: Message, channel_id: int) -> None:
         """Toggle AI for a channel"""
-        async with self.database.get_session() as session:
+        session = await self.database.get_session()
+        try:
             result = await session.execute(select(Channel).where(Channel.id == channel_id))
             channel = result.scalar_one_or_none()
             
@@ -301,3 +311,5 @@ class AdminHandler:
             
             # Refresh channel details
             await self._show_channel_details(message, channel_id, edit=True)
+        finally:
+            await session.close()
