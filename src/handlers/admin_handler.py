@@ -100,11 +100,23 @@ class AdminHandler:
             channel = result.scalar_one_or_none()
             
             if not channel:
-                await message.reply(
-                    f"❌ Kanal topilmadi!\n\n"
-                    f"Kanal ID: <code>{channel_id}</code>\n\n"
-                    f"Avval kanalni qo'shing: /start"
-                )
+                # Try to find channel by ID and update channel_id
+                result = await session.execute(select(Channel).where(Channel.is_active == True))
+                all_channels = result.scalars().all()
+                
+                if all_channels:
+                    await message.reply(
+                        f"❌ Kanal topilmadi!\n\n"
+                        f"Mavjud kanallar:\n" +
+                        "\n".join([f"• {ch.channel_title} (ID: {ch.channel_id})" for ch in all_channels]) +
+                        f"\n\nAgar kanal ID noto'g'ri bo'lsa, /fixchannel buyrug'ini ishlating."
+                    )
+                else:
+                    await message.reply(
+                        f"❌ Kanal topilmadi!\n\n"
+                        f"Kanal ID: <code>{channel_id}</code>\n\n"
+                        f"Avval kanalni qo'shing: /start"
+                    )
                 return
             
             if not channel.reaction_settings:
@@ -163,6 +175,63 @@ class AdminHandler:
             await message.reply(f"❌ Xatolik: {str(e)}")
             import logging
             logging.error(f"Error in boost command: {e}", exc_info=True)
+        finally:
+            await session.close()
+    
+    async def handle_fixchannel_command(self, message: Message) -> None:
+        """Handle /fixchannel command - fix channel ID"""
+        user_id = message.from_user.id
+        
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await message.reply("❌ Sizda admin huquqlari yo'q.")
+            return
+        
+        # Parse command: /fixchannel <new_channel_id>
+        parts = message.text.split()
+        if len(parts) != 2:
+            await message.reply(
+                "❌ Noto'g'ri format!\n\n"
+                "To'g'ri format:\n"
+                "<code>/fixchannel -1001234567890</code>\n\n"
+                "Bu buyruq birinchi kanalni yangi ID bilan yangilaydi."
+            )
+            return
+        
+        try:
+            new_channel_id = int(parts[1])
+        except ValueError:
+            await message.reply("❌ Kanal ID raqam bo'lishi kerak!")
+            return
+        
+        session = await self.database.get_session()
+        try:
+            from sqlalchemy import select
+            result = await session.execute(select(Channel).where(Channel.is_active == True))
+            channels = result.scalars().all()
+            
+            if not channels:
+                await message.reply("❌ Hech qanday kanal topilmadi!")
+                return
+            
+            # Update first channel
+            channel = channels[0]
+            old_id = channel.channel_id
+            channel.channel_id = new_channel_id
+            await session.commit()
+            
+            await message.reply(
+                f"✅ Kanal ID yangilandi!\n\n"
+                f"Kanal: {channel.channel_title}\n"
+                f"Eski ID: <code>{old_id}</code>\n"
+                f"Yangi ID: <code>{new_channel_id}</code>\n\n"
+                f"Endi /boost buyrug'ini ishlating:\n"
+                f"<code>/boost {new_channel_id} &lt;post_id&gt;</code>"
+            )
+            
+        except Exception as e:
+            await message.reply(f"❌ Xatolik: {str(e)}")
+            import logging
+            logging.error(f"Error in fixchannel command: {e}", exc_info=True)
         finally:
             await session.close()
     

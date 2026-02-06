@@ -81,6 +81,11 @@ class BotHandler:
             lambda message: message.text and message.text.startswith('/boost')
         )
         
+        self.dp.message.register(
+            self.admin_handler.handle_fixchannel_command,
+            lambda message: message.text and message.text.startswith('/fixchannel')
+        )
+        
         # Callback queries for admin interface
         self.dp.callback_query.register(
             self.admin_handler.handle_callback_query
@@ -230,6 +235,7 @@ class BotHandler:
             BotCommand(command="stats", description="Statistika ko'rish"),
             BotCommand(command="settings", description="Sozlamalar"),
             BotCommand(command="boost", description="Postga reaksiya qo'shish"),
+            BotCommand(command="fixchannel", description="Kanal ID ni tuzatish"),
         ]
         
         await self.bot.set_my_commands(commands)
