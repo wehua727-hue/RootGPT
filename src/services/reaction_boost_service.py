@@ -9,7 +9,7 @@ from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from telegram import Bot, Message, ReactionTypeEmoji
+from telegram import Bot, Message
 from telegram.error import TelegramError, RetryAfter, Forbidden
 
 from ..models.boosted_post import BoostedPost
@@ -161,7 +161,7 @@ class ReactionBoostService:
                 await self.bot.set_message_reaction(
                     chat_id=channel_id,
                     message_id=message_id,
-                    reaction=[ReactionTypeEmoji(emoji=emoji)]
+                    reaction=[{"type": "emoji", "emoji": emoji}]
                 )
                 return
             except RetryAfter as e:
