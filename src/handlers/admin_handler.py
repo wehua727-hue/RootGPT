@@ -67,24 +67,70 @@ class AdminHandler:
             await message.reply("❌ Sizda admin huquqlari yo'q.")
             return
         
-        # Parse command: /boost <channel_id> <message_id>
+        # Parse command: /boost <channel_id> <message_id> OR /boost <post_link>
         parts = message.text.split()
-        if len(parts) != 3:
+        
+        if len(parts) == 2:
+            # Post link format: /boost https://t.me/channel/123
+            post_link = parts[1]
+            
+            # Parse link
+            if 't.me/' in post_link:
+                try:
+                    # Extract channel and message ID from link
+                    # Format 1: https://t.me/username/123
+                    # Format 2: https://t.me/c/1234567890/123
+                    
+                    link_parts = post_link.split('/')
+                    
+                    if '/c/' in post_link:
+                        # Private channel: https://t.me/c/1234567890/123
+                        channel_id_str = link_parts[-2]
+                        post_id = int(link_parts[-1])
+                        channel_id = int(f"-100{channel_id_str}")
+                    else:
+                        # Public channel: https://t.me/username/123
+                        username = link_parts[-2]
+                        post_id = int(link_parts[-1])
+                        
+                        # Get channel info by username
+                        try:
+                            chat = await self.bot.get_chat(f"@{username}")
+                            channel_id = chat.id
+                        except Exception as e:
+                            await message.reply(f"❌ Kanal topilmadi: @{username}\n\nXatolik: {e}")
+                            return
+                    
+                except Exception as e:
+                    await message.reply(f"❌ Link noto'g'ri formatda!\n\nXatolik: {e}")
+                    return
+            else:
+                await message.reply(
+                    "❌ Noto'g'ri format!\n\n"
+                    "To'g'ri formatlar:\n"
+                    "1. <code>/boost https://t.me/channel/123</code>\n"
+                    "2. <code>/boost -1001234567890 123</code>"
+                )
+                return
+        
+        elif len(parts) == 3:
+            # Manual format: /boost <channel_id> <message_id>
+            try:
+                channel_id = int(parts[1])
+                post_id = int(parts[2])
+            except ValueError:
+                await message.reply("❌ Kanal ID va Post ID raqam bo'lishi kerak!")
+                return
+        else:
             await message.reply(
                 "❌ Noto'g'ri format!\n\n"
-                "To'g'ri format:\n"
-                "<code>/boost -1001234567890 123</code>\n\n"
+                "To'g'ri formatlar:\n"
+                "1. <code>/boost https://t.me/channel/123</code>\n"
+                "2. <code>/boost -1001234567890 123</code>\n\n"
                 "Bu yerda:\n"
-                "• -1001234567890 - kanal ID\n"
-                "• 123 - post ID (message ID)"
+                "• Post linkini to'g'ridan-to'g'ri yuboring\n"
+                "• Yoki kanal ID va post ID ni alohida kiriting"
             )
-            return
-        
-        try:
-            channel_id = int(parts[1])
-            post_id = int(parts[2])
-        except ValueError:
-            await message.reply("❌ Kanal ID va Post ID raqam bo'lishi kerak!")
             return
         
         # Get channel from database
@@ -109,7 +155,7 @@ class AdminHandler:
                         f"❌ Kanal topilmadi!\n\n"
                         f"Mavjud kanallar:\n" +
                         "\n".join([f"• {ch.channel_title} (ID: {ch.channel_id})" for ch in all_channels]) +
-                        f"\n\nAgar kanal ID noto'g'ri bo'lsa, /fixchannel buyrug'ini ishlating."
+                        f"\n\nAgar kanal ID noto'g'ri bo'lsa, /fixchannel {channel_id} buyrug'ini ishlating."
                     )
                 else:
                     await message.reply(
