@@ -578,6 +578,10 @@ class AdminHandler:
         user_id = callback.from_user.id
         data = callback.data
         
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Custom boost callback: user={user_id}, data={data}")
+        
         if not hasattr(self, '_custom_boost_selections'):
             self._custom_boost_selections = {}
         
@@ -587,13 +591,78 @@ class AdminHandler:
         
         selection = self._custom_boost_selections[user_id]
         
-        # Parse callback data: cb_c_1234_567_e_👍 or cb_c_1234_567_done or cb_c_1234_567_count_3
+        # Parse callback data: cb_c_1234_567_e_0 or cb_c_1234_567_done or cb_c_1234_567_count_3
         parts = data.split("_")
+        logger.info(f"Parsed parts: {parts}, len={len(parts)}")
         
-        if len(parts) >= 5 and parts[4] == 'e':
+        # Check what type of callback this is
+        if 'done' in parts:
+            logger.info("Done button clicked")
+            # Done selecting emojis, now ask for count
+            if not selection['emojis']:
+                await callback.answer("❌ Kamida bitta emoji tanlang!")
+                return
+            
+            # Show count selection
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            callback_prefix = selection['callback_prefix']
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="1 ta", callback_data=f"{callback_prefix}_count_1"),
+                    InlineKeyboardButton(text="2 ta", callback_data=f"{callback_prefix}_count_2"),
+                    InlineKeyboardButton(text="3 ta", callback_data=f"{callback_prefix}_count_3"),
+                ],
+                [
+                    InlineKeyboardButton(text="4 ta", callback_data=f"{callback_prefix}_count_4"),
+                    InlineKeyboardButton(text="5 ta", callback_data=f"{callback_prefix}_count_5"),
+                    InlineKeyboardButton(text="10 ta", callback_data=f"{callback_prefix}_count_10"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"{callback_prefix}_back")
+                ]
+            ])
+            
+            selected_text = ' '.join(selection['emojis'])
+            
+            await callback.message.edit_text(
+                f"🔢 <b>Nechta reaksiya qo'shilsin?</b>\n\n"
+                f"Post: {selection['post_link']}\n"
+                f"Emojilar: {selected_text}\n\n"
+                f"Har bir emojidan nechta qo'shilsin?",
+                reply_markup=keyboard
+            )
+            
+            await callback.answer()
+        
+        elif 'count' in parts:
+            logger.info("Count button clicked")
+            # Count selected: cb_c_1234_567_count_3
+            count_idx = parts.index('count')
+            count = int(parts[count_idx + 1])
+            logger.info(f"Count: {count}")
+            
+            # Now boost the post
+            await self._custom_boost_post(callback.message, selection, count)
+            
+            # Clear selection
+            del self._custom_boost_selections[user_id]
+            
+            await callback.answer()
+        
+        elif 'back' in parts:
+            logger.info("Back button clicked")
+            # Go back to emoji selection
+            await self.handle_customboost_command(callback.message)
+            await callback.answer()
+        
+        elif len(parts) >= 5 and parts[4] == 'e':
+            logger.info("Emoji button clicked")
             # Emoji selection: cb_c_1234_567_e_0 (index)
             emoji_idx = int(parts[5])
             emoji = selection['emoji_list'][emoji_idx]
+            logger.info(f"Emoji: {emoji}, index: {emoji_idx}")
             
             if emoji in selection['emojis']:
                 selection['emojis'].remove(emoji)
@@ -637,61 +706,9 @@ class AdminHandler:
                 reply_markup=keyboard
             )
         
-        elif len(parts) >= 4 and parts[3] == 'done':
-            # Done selecting emojis, now ask for count
-            if not selection['emojis']:
-                await callback.answer("❌ Kamida bitta emoji tanlang!")
-                return
-            
-            # Show count selection
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-            
-            callback_prefix = selection['callback_prefix']
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="1 ta", callback_data=f"{callback_prefix}_count_1"),
-                    InlineKeyboardButton(text="2 ta", callback_data=f"{callback_prefix}_count_2"),
-                    InlineKeyboardButton(text="3 ta", callback_data=f"{callback_prefix}_count_3"),
-                ],
-                [
-                    InlineKeyboardButton(text="4 ta", callback_data=f"{callback_prefix}_count_4"),
-                    InlineKeyboardButton(text="5 ta", callback_data=f"{callback_prefix}_count_5"),
-                    InlineKeyboardButton(text="10 ta", callback_data=f"{callback_prefix}_count_10"),
-                ],
-                [
-                    InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"{callback_prefix}_back")
-                ]
-            ])
-            
-            selected_text = ' '.join(selection['emojis'])
-            
-            await callback.message.edit_text(
-                f"🔢 <b>Nechta reaksiya qo'shilsin?</b>\n\n"
-                f"Post: {selection['post_link']}\n"
-                f"Emojilar: {selected_text}\n\n"
-                f"Har bir emojidan nechta qo'shilsin?",
-                reply_markup=keyboard
-            )
-            
-            await callback.answer()
-        
-        elif len(parts) >= 5 and parts[4] == 'count':
-            # Count selected: cb_c_1234_567_count_3
-            count = int(parts[5])
-            
-            # Now boost the post
-            await self._custom_boost_post(callback.message, selection, count)
-            
-            # Clear selection
-            del self._custom_boost_selections[user_id]
-            
-            await callback.answer()
-        
-        elif len(parts) >= 4 and parts[3] == 'back':
-            # Go back to emoji selection
-            await self.handle_customboost_command(callback.message)
-            await callback.answer()
+        else:
+            logger.warning(f"Unknown callback format: {data}")
+            await callback.answer("❌ Noto'g'ri buyruq")
     
     async def _custom_boost_post(self, message: Message, selection: dict, count_per_emoji: int) -> None:
         """Boost a post with custom emoji selection"""
