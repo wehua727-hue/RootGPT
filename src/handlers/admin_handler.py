@@ -743,7 +743,7 @@ class AdminHandler:
             await callback.answer("❌ Noto'g'ri buyruq")
     
     async def _custom_boost_post(self, message: Message, selection: dict, count_per_emoji: int) -> None:
-        """Boost a post with custom emoji selection using multiple bots"""
+        """Boost a post with custom emoji selection - single bot, single reaction"""
         post_link = selection['post_link']
         emojis = selection['emojis']
         
@@ -789,103 +789,60 @@ class AdminHandler:
                 )
                 return
             
-            # Get reaction bot tokens from config
-            reaction_tokens = self.config.REACTION_BOT_TOKENS
-            
-            if not reaction_tokens:
-                await message.reply(
-                    f"❌ Qo'shimcha bot tokenlar topilmadi!\n\n"
-                    f"Bir necha reaksiya qo'shish uchun .env faylida REACTION_BOT_TOKENS ni sozlang.\n\n"
-                    f"Hozircha faqat asosiy bot ishlatiladi (1 ta reaksiya)."
-                )
-                # Use main bot only
-                reaction_tokens = []
-            
-            # Create list of bots: main bot + reaction bots
-            from aiogram import Bot
-            from aiogram.client.default import DefaultBotProperties
-            from aiogram.enums import ParseMode
-            
-            all_bots = [self.bot]  # Main bot
-            
-            # Add reaction bots
-            for token in reaction_tokens[:len(emojis)-1]:  # -1 because main bot handles first emoji
-                try:
-                    bot = Bot(
-                        token=token,
-                        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-                    )
-                    all_bots.append(bot)
-                except Exception as e:
-                    import logging
-                    logging.error(f"Failed to create bot with token {token[:10]}...: {e}")
-            
             await message.reply(
-                f"⏳ Reaksiyalar qo'shilmoqda...\n\n"
+                f"⏳ Reaksiya qo'shilmoqda...\n\n"
                 f"Kanal: {channel.channel_title}\n"
                 f"Post ID: {post_id}\n"
-                f"Emojilar: {' '.join(emojis)}\n"
-                f"Botlar: {len(all_bots)} ta"
+                f"Tanlangan emojilar: {' '.join(emojis)}\n\n"
+                f"💡 Eslatma: Bir bot bir postga faqat bitta reaksiya qo'sha oladi.\n"
+                f"Oxirgi tanlangan emoji qo'shiladi."
             )
             
-            # Add reactions using different bots
-            import random
+            # Add reactions - only last one will remain
             from ..services.reaction_boost_service import ReactionBoostService
+            import random
             
-            successful_reactions = []
+            reaction_service = ReactionBoostService(self.bot, session)
             failed_emojis = []
+            last_successful_emoji = None
             
-            for idx, emoji in enumerate(emojis):
-                # Use different bot for each emoji (cycle through available bots)
-                bot_to_use = all_bots[idx % len(all_bots)]
-                
+            # Try each emoji - Telegram will replace the previous reaction
+            for emoji in emojis:
                 try:
-                    # Create a temporary reaction service for this bot
-                    temp_service = ReactionBoostService(bot_to_use, session)
-                    
-                    await temp_service._add_reaction_with_retry(
+                    await reaction_service._add_reaction_with_retry(
                         str(channel_id),
                         post_id,
                         emoji
                     )
-                    successful_reactions.append(emoji)
+                    last_successful_emoji = emoji
                     
                     # Small delay before next emoji
-                    if idx < len(emojis) - 1:
-                        await asyncio.sleep(random.uniform(0.5, 1.5))
+                    if emoji != emojis[-1]:
+                        await asyncio.sleep(random.uniform(0.5, 1))
                         
                 except Exception as e:
                     error_msg = str(e)
                     if "REACTION_INVALID" in error_msg:
-                        failed_emojis.append(emoji)
+                        if emoji not in failed_emojis:
+                            failed_emojis.append(emoji)
                     else:
                         import logging
                         logging.error(f"Failed to add reaction {emoji}: {e}")
                         failed_emojis.append(emoji)
             
-            # Close additional bots
-            for bot in all_bots[1:]:  # Skip main bot
-                try:
-                    await bot.session.close()
-                except:
-                    pass
-            
             # Send result
             result_text = ""
-            if successful_reactions:
-                result_text = f"✅ Reaksiyalar qo'shildi: {' '.join(successful_reactions)}\n\n"
+            if last_successful_emoji:
+                result_text = f"✅ Reaksiya qo'shildi: {last_successful_emoji}\n\n"
                 result_text += f"Kanal: {channel.channel_title}\n"
-                result_text += f"Post ID: {post_id}\n"
-                result_text += f"Jami: {len(successful_reactions)} ta reaksiya\n"
-                result_text += f"Ishlatilgan botlar: {len(all_bots)} ta"
+                result_text += f"Post ID: {post_id}\n\n"
+                result_text += f"💡 Bir bot bir postga faqat bitta reaksiya qo'sha oladi.\n"
+                result_text += f"Oxirgi tanlangan emoji qo'shildi."
             else:
                 result_text = f"❌ Hech qanday reaksiya qo'shilmadi"
             
             if failed_emojis:
                 result_text += f"\n\n⚠️ Qo'shilmagan emojilar: {' '.join(failed_emojis)}"
-            
-            if len(emojis) > len(all_bots):
-                result_text += f"\n\n💡 Maslahat: {len(emojis)} ta emoji uchun {len(emojis)} ta bot kerak. Hozir {len(all_bots)} ta bot mavjud."
             
             await message.reply(result_text)
             
