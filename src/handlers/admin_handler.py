@@ -341,21 +341,42 @@ class AdminHandler:
             # Ask for count using inline keyboard
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             
+            # Store post link in a simpler format for callback
+            # Extract just the essential parts
+            try:
+                if 't.me/' in post_link:
+                    link_parts = post_link.split('/')
+                    if '/c/' in post_link:
+                        channel_part = link_parts[-2]
+                        post_id = link_parts[-1]
+                        callback_prefix = f"bm_c_{channel_part}_{post_id}"
+                    else:
+                        username = link_parts[-2].replace('@', '')
+                        post_id = link_parts[-1]
+                        callback_prefix = f"bm_u_{username}_{post_id}"
+                else:
+                    await message.reply("❌ Noto'g'ri link format!")
+                    return
+            except Exception as e:
+                await message.reply(f"❌ Link parse qilishda xatolik: {e}")
+                return
+            
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="1 marta", callback_data=f"boostmulti_{post_link}_1"),
-                    InlineKeyboardButton(text="2 marta", callback_data=f"boostmulti_{post_link}_2"),
-                    InlineKeyboardButton(text="3 marta", callback_data=f"boostmulti_{post_link}_3"),
+                    InlineKeyboardButton(text="1 marta", callback_data=f"{callback_prefix}_1"),
+                    InlineKeyboardButton(text="2 marta", callback_data=f"{callback_prefix}_2"),
+                    InlineKeyboardButton(text="3 marta", callback_data=f"{callback_prefix}_3"),
                 ],
                 [
-                    InlineKeyboardButton(text="4 marta", callback_data=f"boostmulti_{post_link}_4"),
-                    InlineKeyboardButton(text="5 marta", callback_data=f"boostmulti_{post_link}_5"),
-                    InlineKeyboardButton(text="10 marta", callback_data=f"boostmulti_{post_link}_10"),
+                    InlineKeyboardButton(text="4 marta", callback_data=f"{callback_prefix}_4"),
+                    InlineKeyboardButton(text="5 marta", callback_data=f"{callback_prefix}_5"),
+                    InlineKeyboardButton(text="10 marta", callback_data=f"{callback_prefix}_10"),
                 ]
             ])
             
             await message.reply(
-                "🔢 Necha marta reaksiya qo'shilsin?",
+                f"🔢 Necha marta reaksiya qo'shilsin?\n\n"
+                f"Post: {post_link}",
                 reply_markup=keyboard
             )
             return
@@ -522,12 +543,26 @@ class AdminHandler:
             channel_id = int(parts[1])
             count = int(parts[2])
             await self._set_reaction_count(callback.message, channel_id, count)
-        elif data.startswith("boostmulti_"):
-            # Format: boostmulti_<post_link>_<count>
-            parts = data.split("_", 2)  # Split into max 3 parts
-            if len(parts) == 3:
-                post_link = parts[1]
-                count = int(parts[2])
+        elif data.startswith("bm_"):
+            # Format: bm_c_<channel_id>_<post_id>_<count> or bm_u_<username>_<post_id>_<count>
+            parts = data.split("_")
+            if len(parts) >= 5:
+                link_type = parts[1]  # 'c' or 'u'
+                if link_type == 'c':
+                    # Private channel: bm_c_1234567890_123_5
+                    channel_part = parts[2]
+                    post_id = parts[3]
+                    count = int(parts[4])
+                    post_link = f"https://t.me/c/{channel_part}/{post_id}"
+                elif link_type == 'u':
+                    # Public channel: bm_u_username_123_5
+                    username = parts[2]
+                    post_id = parts[3]
+                    count = int(parts[4])
+                    post_link = f"https://t.me/{username}/{post_id}"
+                else:
+                    return
+                
                 await self._boost_post_multiple_times(callback.message, post_link, count)
         
         await callback.answer()
