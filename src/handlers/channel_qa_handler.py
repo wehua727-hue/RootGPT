@@ -55,7 +55,6 @@ class ChannelQAHandler:
         try:
             chat = await self.bot.get_chat(channel_id)
             channel_title = chat.title or chat.username or str(channel_id)
-            channel_username = chat.username
         except Exception as e:
             await message.reply(
                 f"❌ Kanal topilmadi!\n\n"
@@ -89,7 +88,6 @@ class ChannelQAHandler:
             channel = Channel(
                 channel_id=channel_id,
                 channel_title=channel_title,
-                channel_username=channel_username,
                 is_active=True,
                 mode='comment'  # Default mode for Q&A
             )
