@@ -13,6 +13,8 @@ from ..config import Config
 from ..database import Database
 from ..models import Channel, Comment, CommentCategory, Blacklist, BlacklistType
 from ..services.response_generator import ResponseGenerator
+from ..services.technical_question_detector import TechnicalQuestionDetector
+from ..services.technical_ai_service import TechnicalAIService
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,11 @@ class CommentMonitor:
         self.database = database
         self.config = config
         self.response_generator = ResponseGenerator(bot, database, config)
+        
+        # Initialize technical components
+        self.technical_detector = TechnicalQuestionDetector()
+        self.technical_ai_service = TechnicalAIService(config)
+        logger.info("CommentMonitor initialized with technical Q&A support")
     
     async def process_comment(self, message: Message, channel: Channel) -> None:
         """Process a comment from discussion group"""
@@ -38,6 +45,51 @@ class CommentMonitor:
                 logger.info(f"Comment blocked by spam protection: user {message.from_user.id}")
                 return
             
+            # NEW: Check if technical question
+            is_technical = await self.technical_detector.is_technical_question(message.text)
+            
+            if is_technical:
+                logger.info(f"Technical question detected from user {message.from_user.id}")
+                await self._process_technical_comment(message, channel)
+            else:
+                # Existing flow for non-technical comments
+                await self._process_standard_comment(message, channel)
+            
+        except Exception as e:
+            logger.error(f"Error processing comment: {e}")
+    
+    async def _process_technical_comment(self, message: Message, channel: Channel) -> None:
+        """Process technical question"""
+        try:
+            # Extract technical context
+            tech_context = await self.technical_detector.extract_technical_context(message.text)
+            code_snippet = await self.technical_detector.detect_code_snippet(message.text)
+            error_info = await self.technical_detector.detect_error_message(message.text)
+            
+            logger.info(f"Technical context: lang={tech_context.primary_language}, "
+                       f"framework={tech_context.framework}, confidence={tech_context.confidence:.2f}")
+            
+            # Generate technical response
+            response_text = await self.technical_ai_service.generate_technical_response(
+                user_question=message.text,
+                technical_context=tech_context,
+                code_snippet=code_snippet,
+                error_info=error_info
+            )
+            
+            # Send response
+            await message.reply(response_text, parse_mode="Markdown")
+            
+            logger.info(f"Technical response sent to user {message.from_user.id}")
+            
+        except Exception as e:
+            logger.error(f"Error processing technical comment: {e}")
+            # Fallback to standard processing
+            await self._process_standard_comment(message, channel)
+    
+    async def _process_standard_comment(self, message: Message, channel: Channel) -> None:
+        """Process standard (non-technical) comment"""
+        try:
             # Create comment record
             comment = await self._create_comment_record(message, channel)
             
@@ -69,7 +121,7 @@ class CommentMonitor:
             logger.info(f"Processed comment {comment.id} from user {message.from_user.id}")
             
         except Exception as e:
-            logger.error(f"Error processing comment: {e}")
+            logger.error(f"Error processing standard comment: {e}")
     
     async def is_valid_comment(self, message: Message) -> bool:
         """Check if message is a valid comment to process"""

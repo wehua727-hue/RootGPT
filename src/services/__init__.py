@@ -12,6 +12,8 @@ from .reaction_boost_service import ReactionBoostService
 from .post_monitor_service import PostMonitorService
 from .auto_repost_service import AutoRepostService
 from .repost_scheduler import RepostScheduler
+from .technical_question_detector import TechnicalQuestionDetector, TechnicalContext, CodeSnippet, ErrorInfo
+from .technical_ai_service import TechnicalAIService
 
 __all__ = [
     "AIService",
@@ -25,4 +27,9 @@ __all__ = [
     "PostMonitorService",
     "AutoRepostService",
     "RepostScheduler",
+    "TechnicalQuestionDetector",
+    "TechnicalContext",
+    "CodeSnippet",
+    "ErrorInfo",
+    "TechnicalAIService",
 ]

@@ -158,13 +158,13 @@ This implementation plan adds a reaction boost feature to the existing Telegram 
     - _Requirements: 3.1_
 
 - [ ] 7. Extend AdminHandler for channel mode configuration
-  - [~] 7.1 Implement create_channel_config() method
+  - [ ] 7.1 Implement create_channel_config() method
     - Display mode selection keyboard (comment/reaction/both)
     - Handle callback data for mode selection
     - Store selected mode in database
     - _Requirements: 1.1, 1.2_
   
-  - [~] 7.2 Implement configure_reaction_settings() conversation handler
+  - [ ] 7.2 Implement configure_reaction_settings() conversation handler
     - Step 1: Collect emoji list from admin
     - Step 2: Collect reaction count (validate 1-100)
     - Step 3: Collect delay range (validate positive numbers)
@@ -173,26 +173,26 @@ This implementation plan adds a reaction boost feature to the existing Telegram 
     - Store settings in channel.reaction_settings
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8_
   
-  - [~] 7.3 Implement validate_bot_permissions() method
+  - [ ] 7.3 Implement validate_bot_permissions() method
     - Call get_chat_member API for bot user
     - Check if bot is admin or creator
     - Return permission status dictionary
     - _Requirements: 7.1, 7.2, 7.3_
   
-  - [~] 7.4 Add permission validation to mode enablement
+  - [ ] 7.4 Add permission validation to mode enablement
     - When admin enables Reaction_Boost_Mode, call validate_bot_permissions()
     - Display warning if bot is not admin
     - Show instructions for granting permissions
     - _Requirements: 7.1, 7.2_
   
-  - [~] 7.5 Implement display_activity_logs() method
+  - [ ] 7.5 Implement display_activity_logs() method
     - Query ActivityLog table for channel
     - Order by timestamp descending
     - Limit to recent 50 entries
     - Format logs for display
     - _Requirements: 6.4_
   
-  - [~] 7.6 Add error count display to admin panel
+  - [ ] 7.6 Add error count display to admin panel
     - Query ActivityLog for error entries
     - Display error count and last error timestamp per channel
     - _Requirements: 6.5_
@@ -205,13 +205,13 @@ This implementation plan adds a reaction boost feature to the existing Telegram 
     - _Requirements: 1.1, 1.2, 2.1, 7.1, 6.4_
 
 - [ ] 8. Implement permission monitoring and auto-disable
-  - [~] 8.1 Add periodic permission check to PostMonitorService
+  - [ ] 8.1 Add periodic permission check to PostMonitorService
     - Check bot permissions before boosting
     - If ChatAdminRequired error occurs, disable reaction mode
     - Log warning when permissions are lost
     - _Requirements: 3.8, 7.4_
   
-  - [~] 8.2 Implement re-enable functionality in admin panel
+  - [ ] 8.2 Implement re-enable functionality in admin panel
     - Add "Re-check Permissions" button for each channel
     - Call validate_bot_permissions() on click
     - Re-enable Reaction_Boost_Mode if permissions are valid
@@ -229,7 +229,7 @@ This implementation plan adds a reaction boost feature to the existing Telegram 
     - Start monitoring loop
     - _Requirements: 1.4, 1.5_
   
-  - [~] 9.2 Verify backward compatibility
+  - [ ] 9.2 Verify backward compatibility
     - Test that existing channels continue working
     - Verify default mode='comment' for migrated channels
     - Test that comment response functionality is unaffected

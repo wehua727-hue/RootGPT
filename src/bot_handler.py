@@ -175,13 +175,9 @@ class BotHandler:
             # Don't raise - bot can still work without reaction boosting
     
     async def _handle_channel_post(self, message: Message) -> None:
-        """Handle new posts in channels (for reaction boosting)"""
+        """Handle new posts in channels (for reaction boosting and Q&A)"""
         try:
             logger.info(f"Received channel post: chat_id={message.chat.id}, message_id={message.message_id}")
-            
-            if not self.post_monitor_service:
-                logger.warning("PostMonitorService not initialized")
-                return
             
             # Get channel from database
             from sqlalchemy import select
@@ -201,13 +197,41 @@ class BotHandler:
                     logger.warning(f"Channel {message.chat.id} not found in database")
                     return
                 
-                logger.info(f"Found channel: {channel.channel_title}, mode={channel.mode}, reaction_settings={channel.reaction_settings}")
+                logger.info(f"Found channel: {channel.channel_title}, mode={channel.mode}")
                 
-                if channel and (channel.mode == 'reaction' or channel.mode == 'both'):
-                    logger.info(f"Processing channel post {message.message_id} in channel {channel.channel_id}")
+                # Handle reaction boosting
+                if self.post_monitor_service and (channel.mode == 'reaction' or channel.mode == 'both'):
+                    logger.info(f"Processing channel post {message.message_id} for reaction boost")
                     await self.post_monitor_service.process_channel_post(channel, message)
-                else:
-                    logger.info(f"Channel mode is '{channel.mode}', skipping reaction boost")
+                
+                # NEW: Handle technical Q&A for channel posts
+                if message.text:
+                    from .services.technical_question_detector import TechnicalQuestionDetector
+                    from .services.technical_ai_service import TechnicalAIService
+                    
+                    detector = TechnicalQuestionDetector()
+                    is_technical = await detector.is_technical_question(message.text)
+                    
+                    if is_technical:
+                        logger.info(f"Technical question detected in channel post {message.message_id}")
+                        
+                        # Extract context
+                        tech_context = await detector.extract_technical_context(message.text)
+                        code_snippet = await detector.detect_code_snippet(message.text)
+                        error_info = await detector.detect_error_message(message.text)
+                        
+                        # Generate response
+                        tech_ai = TechnicalAIService(self.config)
+                        response_text = await tech_ai.generate_technical_response(
+                            user_question=message.text,
+                            technical_context=tech_context,
+                            code_snippet=code_snippet,
+                            error_info=error_info
+                        )
+                        
+                        # Send response as comment to the post
+                        await message.reply(response_text, parse_mode="Markdown")
+                        logger.info(f"Technical response sent to channel post {message.message_id}")
                 
             finally:
                 await session.close()
