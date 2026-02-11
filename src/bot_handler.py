@@ -3,7 +3,9 @@ Main bot handler for Telegram integration
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
+from collections import deque
+from datetime import datetime
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -31,6 +33,11 @@ class BotHandler:
         """Initialize bot handler"""
         self.config = config
         self.database = database
+        
+        # Conversation context cache: {channel_id: deque([(timestamp, user_msg, bot_response), ...])}
+        # Keep last 10 messages per channel
+        self.conversation_context: Dict[int, deque] = {}
+        self.max_context_messages = 10
         
         # Initialize bot with default properties
         default_properties = DefaultBotProperties(
@@ -230,6 +237,9 @@ class BotHandler:
                     
                     logger.info(f"Processing channel post {message.message_id} for Q&A")
                     
+                    # Get conversation context for this channel
+                    context_str = self._get_conversation_context(message.chat.id)
+                    
                     # Check if technical question
                     detector = TechnicalQuestionDetector()
                     is_technical = await detector.is_technical_question(message.text)
@@ -255,13 +265,39 @@ class BotHandler:
                     else:
                         logger.info(f"Standard question detected in channel post {message.message_id}")
                         
-                        # Generate standard response
+                        # Generate standard response with conversation context
                         ai_service = AIService(self.config)
-                        response_text = await ai_service.generate_response(message.text)
+                        response_text = await ai_service.generate_response(message.text, context_str)
                     
                     # Send response as comment to the post
                     if response_text:
-                        await message.reply(response_text, parse_mode="Markdown")
+                        # Escape Markdown special characters
+                        response_text = self._escape_markdown(response_text)
+                        
+                        try:
+                            # Try with Markdown first
+                            sent_message = await message.reply(response_text, parse_mode="Markdown")
+                            
+                            # Store in conversation context
+                            self._add_to_context(message.chat.id, message.text, response_text)
+                            
+                        except Exception as markdown_error:
+                            logger.warning(f"Markdown parsing failed: {markdown_error}")
+                            try:
+                                # Fallback to HTML
+                                sent_message = await message.reply(response_text, parse_mode="HTML")
+                                
+                                # Store in conversation context
+                                self._add_to_context(message.chat.id, message.text, response_text)
+                                
+                            except Exception as html_error:
+                                logger.warning(f"HTML parsing failed: {html_error}")
+                                # Fallback to plain text
+                                sent_message = await message.reply(response_text, parse_mode=None)
+                                
+                                # Store in conversation context
+                                self._add_to_context(message.chat.id, message.text, response_text)
+                        
                         logger.info(f"Response sent to channel post {message.message_id}")
                 
             finally:
@@ -269,6 +305,56 @@ class BotHandler:
                 
         except Exception as e:
             logger.error(f"Error handling channel post: {e}", exc_info=True)
+    
+    def _get_conversation_context(self, channel_id: int) -> str:
+        """Get conversation context for a channel"""
+        if channel_id not in self.conversation_context:
+            return ""
+        
+        context_messages = self.conversation_context[channel_id]
+        if not context_messages:
+            return ""
+        
+        # Build context string from last messages
+        context_parts = ["OLDINGI SUHBAT (Previous conversation):"]
+        for timestamp, user_msg, bot_response in context_messages:
+            context_parts.append(f"Foydalanuvchi: {user_msg}")
+            context_parts.append(f"RootGPT: {bot_response}")
+        
+        return "\n".join(context_parts)
+    
+    def _add_to_context(self, channel_id: int, user_message: str, bot_response: str) -> None:
+        """Add message pair to conversation context"""
+        if channel_id not in self.conversation_context:
+            self.conversation_context[channel_id] = deque(maxlen=self.max_context_messages)
+        
+        # Add new message pair with timestamp
+        self.conversation_context[channel_id].append((
+            datetime.now(),
+            user_message[:200],  # Limit message length
+            bot_response[:200]   # Limit response length
+        ))
+        
+        logger.info(f"Added to context for channel {channel_id}, total messages: {len(self.conversation_context[channel_id])}")
+    
+    def _escape_markdown(self, text: str) -> str:
+        """Escape Markdown special characters for Telegram"""
+        # Characters that need escaping in Telegram Markdown
+        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        
+        # Don't escape inside code blocks
+        if '```' in text:
+            # Split by code blocks and only escape outside of them
+            parts = text.split('```')
+            for i in range(0, len(parts), 2):  # Only escape odd indices (outside code blocks)
+                for char in special_chars:
+                    parts[i] = parts[i].replace(char, f'\\{char}')
+            return '```'.join(parts)
+        else:
+            # Escape all special characters
+            for char in special_chars:
+                text = text.replace(char, f'\\{char}')
+            return text
     
     async def _handle_autorepost_command(self, message: Message) -> None:
         """Handle /autorepost commands"""
