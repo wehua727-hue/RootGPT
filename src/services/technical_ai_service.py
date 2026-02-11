@@ -63,9 +63,7 @@ TEXNIK BILIMLAR:
 
 JAVOB BERISH QOIDALARI:
 1. Savollarga IXCHAM, ANIQ va TO'LIQ texnik javob ber
-2. Kod misollarini Telegram markdown formatida yoz: ```language
-kod
-```
+2. Kod misollarini ODDIY MATN formatida yoz (backtick ishlatma)
 3. Texnik terminlarni inglizcha qoldiring, tushuntirishni o'zbekcha bering
 4. Agar kod xatosi bo'lsa, xatoning sababini tushuntir va to'g'ri kodini ko'rsat
 5. Best practice va xavfsizlik masalalarini eslatib o't
@@ -74,6 +72,13 @@ kod
 8. Agar savol noaniq bo'lsa, aniqlashtiruvchi savol ber
 9. Kod misollarida izohlar (comments) qo'sh
 10. JAVOBNI QISQA VA ANIQ QILIB BER - ortiqcha so'z ishlatma!
+11. ODDIY MATN FORMATIDA YOZ - murakkab jadval yoki markdown ishlatma!
+
+JAVOB FORMATI:
+- Oddiy matn (plain text)
+- Kod uchun: oddiy matn, har bir qator yangi qatordan
+- Ro'yxat: 1., 2., 3. yoki • ishlatgin
+- Emoji: ✅ ❌ 💡 📌 🔥
 
 """
         

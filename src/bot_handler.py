@@ -271,32 +271,22 @@ class BotHandler:
                     
                     # Send response as comment to the post
                     if response_text:
-                        # Escape Markdown special characters
-                        response_text = self._escape_markdown(response_text)
-                        
                         try:
-                            # Try with Markdown first
-                            sent_message = await message.reply(response_text, parse_mode="Markdown")
+                            # Try with plain text first (most reliable)
+                            sent_message = await message.reply(response_text, parse_mode=None)
                             
                             # Store in conversation context
                             self._add_to_context(message.chat.id, message.text, response_text)
                             
-                        except Exception as markdown_error:
-                            logger.warning(f"Markdown parsing failed: {markdown_error}")
+                        except Exception as send_error:
+                            logger.error(f"Failed to send response: {send_error}")
+                            # If even plain text fails, try shorter response
                             try:
-                                # Fallback to HTML
-                                sent_message = await message.reply(response_text, parse_mode="HTML")
-                                
-                                # Store in conversation context
-                                self._add_to_context(message.chat.id, message.text, response_text)
-                                
-                            except Exception as html_error:
-                                logger.warning(f"HTML parsing failed: {html_error}")
-                                # Fallback to plain text
-                                sent_message = await message.reply(response_text, parse_mode=None)
-                                
-                                # Store in conversation context
-                                self._add_to_context(message.chat.id, message.text, response_text)
+                                short_response = response_text[:1000] + "..." if len(response_text) > 1000 else response_text
+                                sent_message = await message.reply(short_response, parse_mode=None)
+                                self._add_to_context(message.chat.id, message.text, short_response)
+                            except Exception as final_error:
+                                logger.error(f"All send attempts failed: {final_error}")
                         
                         logger.info(f"Response sent to channel post {message.message_id}")
                 
@@ -338,23 +328,10 @@ class BotHandler:
         logger.info(f"Added to context for channel {channel_id}, total messages: {len(self.conversation_context[channel_id])}")
     
     def _escape_markdown(self, text: str) -> str:
-        """Escape Markdown special characters for Telegram"""
-        # Characters that need escaping in Telegram Markdown
-        special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-        
-        # Don't escape inside code blocks
-        if '```' in text:
-            # Split by code blocks and only escape outside of them
-            parts = text.split('```')
-            for i in range(0, len(parts), 2):  # Only escape odd indices (outside code blocks)
-                for char in special_chars:
-                    parts[i] = parts[i].replace(char, f'\\{char}')
-            return '```'.join(parts)
-        else:
-            # Escape all special characters
-            for char in special_chars:
-                text = text.replace(char, f'\\{char}')
-            return text
+        """Escape Markdown special characters for Telegram - but keep it readable"""
+        # Don't escape at all - Telegram Markdown escaping breaks formatting
+        # Instead, we'll use plain text or HTML mode
+        return text
     
     async def _handle_autorepost_command(self, message: Message) -> None:
         """Handle /autorepost commands"""
