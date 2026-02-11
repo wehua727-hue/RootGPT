@@ -16,6 +16,7 @@ from .database import Database
 from .handlers.admin_handler import AdminHandler
 from .handlers.message_handler import MessageHandler
 from .handlers.autorepost_handler import AutoRepostHandler
+from .handlers.channel_qa_handler import ChannelQAHandler
 from .services.reaction_boost_service import ReactionBoostService
 from .services.post_monitor_service import PostMonitorService
 from .services.repost_scheduler import RepostScheduler
@@ -49,6 +50,7 @@ class BotHandler:
         self.admin_handler = AdminHandler(self.bot, self.database, self.config)
         self.message_handler = MessageHandler(self.bot, self.database, self.config)
         self.autorepost_handler = AutoRepostHandler(self.bot, self.config)
+        self.channel_qa_handler = ChannelQAHandler(self.bot, self.database, self.config)
         
         # Initialize reaction boost services
         self.reaction_boost_service: Optional[ReactionBoostService] = None
@@ -104,6 +106,22 @@ class BotHandler:
         self.dp.message.register(
             self._handle_autorepost_command,
             lambda message: message.text and message.text.startswith('/autorepost')
+        )
+        
+        # Channel Q&A commands
+        self.dp.message.register(
+            self.channel_qa_handler.handle_addchannel_command,
+            lambda message: message.text and message.text.startswith('/addchannel')
+        )
+        
+        self.dp.message.register(
+            self.channel_qa_handler.handle_listchannels_command,
+            lambda message: message.text and message.text.startswith('/listchannels')
+        )
+        
+        self.dp.message.register(
+            self.channel_qa_handler.handle_removechannel_command,
+            lambda message: message.text and message.text.startswith('/removechannel')
         )
         
         # Callback queries for admin interface
@@ -204,13 +222,19 @@ class BotHandler:
                     logger.info(f"Processing channel post {message.message_id} for reaction boost")
                     await self.post_monitor_service.process_channel_post(channel, message)
                 
-                # NEW: Handle technical Q&A for channel posts
+                # NEW: Handle Q&A for ALL channel posts with text
                 if message.text:
                     from .services.technical_question_detector import TechnicalQuestionDetector
                     from .services.technical_ai_service import TechnicalAIService
+                    from .services.ai_service import AIService
                     
+                    logger.info(f"Processing channel post {message.message_id} for Q&A")
+                    
+                    # Check if technical question
                     detector = TechnicalQuestionDetector()
                     is_technical = await detector.is_technical_question(message.text)
+                    
+                    response_text = None
                     
                     if is_technical:
                         logger.info(f"Technical question detected in channel post {message.message_id}")
@@ -220,7 +244,7 @@ class BotHandler:
                         code_snippet = await detector.detect_code_snippet(message.text)
                         error_info = await detector.detect_error_message(message.text)
                         
-                        # Generate response
+                        # Generate technical response
                         tech_ai = TechnicalAIService(self.config)
                         response_text = await tech_ai.generate_technical_response(
                             user_question=message.text,
@@ -228,10 +252,17 @@ class BotHandler:
                             code_snippet=code_snippet,
                             error_info=error_info
                         )
+                    else:
+                        logger.info(f"Standard question detected in channel post {message.message_id}")
                         
-                        # Send response as comment to the post
+                        # Generate standard response
+                        ai_service = AIService(self.config)
+                        response_text = await ai_service.generate_response(message.text)
+                    
+                    # Send response as comment to the post
+                    if response_text:
                         await message.reply(response_text, parse_mode="Markdown")
-                        logger.info(f"Technical response sent to channel post {message.message_id}")
+                        logger.info(f"Response sent to channel post {message.message_id}")
                 
             finally:
                 await session.close()
@@ -341,6 +372,9 @@ class BotHandler:
             BotCommand(command="customboost", description="Emoji va sonni tanlash"),
             BotCommand(command="fixchannel", description="Kanal ID ni tuzatish"),
             BotCommand(command="autorepost", description="Avtomatik repost sozlamalari"),
+            BotCommand(command="addchannel", description="Kanal qo'shish (Q&A uchun)"),
+            BotCommand(command="listchannels", description="Kanallar ro'yxati"),
+            BotCommand(command="removechannel", description="Kanalni o'chirish"),
         ]
         
         await self.bot.set_my_commands(commands)
