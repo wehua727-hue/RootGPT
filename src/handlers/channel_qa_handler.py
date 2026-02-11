@@ -37,11 +37,12 @@ class ChannelQAHandler:
             await message.reply(
                 "❌ Noto'g'ri format!\n\n"
                 "To'g'ri format:\n"
-                "<code>/addchannel -1001234567890</code>\n\n"
+                "/addchannel -1001234567890\n\n"
                 "Kanal ID ni olish uchun:\n"
                 "1. Kanalga post qo'shing\n"
                 "2. Postni forward qiling @userinfobot ga\n"
-                "3. Bot sizga kanal ID ni beradi"
+                "3. Bot sizga kanal ID ni beradi",
+                parse_mode=None
             )
             return
         
@@ -77,10 +78,11 @@ class ChannelQAHandler:
                 await message.reply(
                     f"✅ Kanal allaqachon qo'shilgan!\n\n"
                     f"📢 Kanal: {existing.channel_title}\n"
-                    f"🆔 ID: <code>{existing.channel_id}</code>\n"
+                    f"🆔 ID: {existing.channel_id}\n"
                     f"📊 Status: {'✅ Faol' if existing.is_active else '❌ Nofaol'}\n"
                     f"🤖 Mode: {existing.mode}\n\n"
-                    f"Endi kanalga savol yozing va bot javob beradi!"
+                    f"Endi kanalga savol yozib, bot javob beradi!",
+                    parse_mode=None
                 )
                 return
             
@@ -99,13 +101,14 @@ class ChannelQAHandler:
             await message.reply(
                 f"✅ Kanal muvaffaqiyatli qo'shildi!\n\n"
                 f"📢 Kanal: {channel_title}\n"
-                f"🆔 ID: <code>{channel_id}</code>\n"
+                f"🆔 ID: {channel_id}\n"
                 f"🤖 Mode: Q&A (har bir postga javob beradi)\n\n"
-                f"🎉 Endi kanalga savol yozing va bot avtomatik javob beradi!\n\n"
+                f"🎉 Endi kanalga savol yozib, bot avtomatik javob beradi!\n\n"
                 f"💡 Maslahat:\n"
                 f"• Texnik savollar uchun: Python, JavaScript, React, Django va boshqalar\n"
                 f"• Oddiy savollar uchun: har qanday mavzu\n"
-                f"• Bot har bir postga javob beradi!"
+                f"• Bot har bir postga javob beradi!",
+                parse_mode=None
             )
             
             logger.info(f"Channel added: {channel_title} (ID: {channel_id})")
@@ -139,15 +142,15 @@ class ChannelQAHandler:
             for channel in channels:
                 status_emoji = "✅" if channel.is_active else "❌"
                 response += (
-                    f"{status_emoji} **{channel.channel_title}**\n"
-                    f"   🆔 ID: <code>{channel.channel_id}</code>\n"
+                    f"{status_emoji} {channel.channel_title}\n"
+                    f"   🆔 ID: {channel.channel_id}\n"
                     f"   🤖 Mode: {channel.mode}\n"
                     f"   📊 Status: {'Faol' if channel.is_active else 'Nofaol'}\n\n"
                 )
             
-            response += "\n💡 Kanal qo'shish: /addchannel <channel_id>"
+            response += "\n💡 Kanal qo'shish: /addchannel [channel_id]"
             
-            await message.reply(response, parse_mode="HTML")
+            await message.reply(response, parse_mode=None)
             
         except Exception as e:
             logger.error(f"Error listing channels: {e}")
@@ -169,7 +172,8 @@ class ChannelQAHandler:
             await message.reply(
                 "❌ Noto'g'ri format!\n\n"
                 "To'g'ri format:\n"
-                "<code>/removechannel -1001234567890</code>"
+                "/removechannel -1001234567890",
+                parse_mode=None
             )
             return
         
@@ -197,7 +201,8 @@ class ChannelQAHandler:
             await message.reply(
                 f"✅ Kanal o'chirildi!\n\n"
                 f"📢 Kanal: {channel_title}\n"
-                f"🆔 ID: <code>{channel_id}</code>"
+                f"🆔 ID: {channel_id}",
+                parse_mode=None
             )
             
             logger.info(f"Channel removed: {channel_title} (ID: {channel_id})")
